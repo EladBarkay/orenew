@@ -1,0 +1,28 @@
+# Build and dependency output
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri build output
+target/
+src-tauri/target/
+
+# Logs
+*.log
+*.log.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database
+magnet.db
+*.sqlite
+*.sqlite-journal
+
+# Editor configuration
+.vscode/
+.idea/
+*.swp
+*.swo
