@@ -4,9 +4,10 @@ import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
 import ExportDialog from "./components/ExportDialog";
 import PrintDialog from "./components/PrintDialog";
+import FramePresetDialog from "./components/FramePresetDialog";
 import { MagnetEvent, Photo, PhotoBatch } from "./types";
 
-type Modal = "export" | "print" | null;
+type Modal = "export" | "print" | "addFrame" | null;
 
 export default function App() {
   const [event, setEvent] = useState<MagnetEvent | null>(null);
@@ -111,16 +112,39 @@ export default function App() {
                 ))}
               </Section>
 
-              <Section label="Frames">
+              <Section
+                label="Frames"
+                action={
+                  <button
+                    onClick={() => setModal("addFrame")}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    + Add
+                  </button>
+                }
+              >
                 {event.frame_presets.length === 0 ? (
-                  <p className="px-3 py-1 text-xs text-neutral-600">No frames configured</p>
+                  <p className="px-3 py-1 text-xs text-neutral-600">
+                    No frames —{" "}
+                    <button
+                      onClick={() => setModal("addFrame")}
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      add one
+                    </button>
+                  </p>
                 ) : (
                   event.frame_presets.map((p) => (
                     <SidebarItem
                       key={p.id}
                       label={p.name}
+                      sublabel={`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
                       active={p.id === event.active_frame_preset_id}
-                      onClick={() => setEvent({ ...event, active_frame_preset_id: p.id })}
+                      onClick={async () => {
+                        const updated = { ...event, active_frame_preset_id: p.id };
+                        setEvent(updated);
+                        await invoke("save_event", { event: updated }).catch(() => {});
+                      }}
                     />
                   ))
                 )}
@@ -186,18 +210,35 @@ export default function App() {
           initialPhotoId={selected?.id}
         />
       )}
+      {modal === "addFrame" && event && (
+        <FramePresetDialog
+          event={event}
+          onCreated={(updatedEvent) => {
+            updateEvent(updatedEvent);
+            setModal(null);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ── Small components ──────────────────────────────────────────────────────────
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label, children, action,
+}: {
+  label: string; children: React.ReactNode; action?: React.ReactNode;
+}) {
   return (
     <div className="py-2">
-      <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
-        {label}
-      </p>
+      <div className="flex items-center justify-between px-3 pb-1">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+          {label}
+        </p>
+        {action}
+      </div>
       {children}
     </div>
   );
