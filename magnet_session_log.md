@@ -13,7 +13,7 @@
 | Orientation detection | Removed EXIF-based logic entirely — now uses pixel dimensions only (`width >= height → Landscape`) |
 | FS watcher not pushing updates | Rewrote `FsWatcher` to emit Tauri `"folder-changed"` events; frontend listens via `useRef` stable-closure pattern and calls `refresh_batch` IPC; `merge_photos()` preserves `print_count` + overrides for unchanged photos, resets for changed, drops deleted |
 | Export extremely slow (~2 min / 2 photos) | Added `frame_photo_for_canvas()` — crops photo then resizes to slot dimensions **before** frame compositing; pre-resizes both frame PNGs to slot size once before the rayon loop; compositing now works on ~1–2 MP instead of ~20 MP (~10–20× speedup) |
-| White border around exported photos | Default `margin_px` in `CanvasPresetForm` changed from 40 → 0 |
+| White border around exported photos | **Partially fixed** — default `margin_px` in `CanvasPresetForm` changed from 40 → 0 for new presets. Existing saved presets in `magnet.json` still have `margin_px: 40` and will still show a white border. User must delete and recreate their canvas preset, or the app needs a way to edit existing presets / the saved JSON needs to be patched manually. |
 | "Open folder" button broken in export result | Was calling nonexistent `invoke("open_path", ...)`; replaced with `openPath` from `@tauri-apps/plugin-opener` |
 
 ---
@@ -23,6 +23,7 @@
 - **Multi-batch support** — `add_batch` command + sidebar "+ Add" button; each batch is an independent folder scan
 - **Delete event** — `delete_event` command + trash icon in toolbar with confirmation dialog
 - **Delete batch** — `delete_batch` command + hover-revealed trash icon per batch item; Rust unwatches the folder; files are never touched
+- **Canvas preset margin default** — new presets now default to `margin_px: 0`; **existing presets are unaffected** (still need edit/delete-recreate to fix)
 - **Drag & reorder batches** — HTML5 drag-and-drop on sidebar batch items; new order persisted via `save_event`
 - **Per-batch path display** — shows path relative to `event.root_path`; falls back to full path if outside root; full path shown on hover tooltip; double-click opens the folder in the OS file explorer
 - **Dialog defaultPath** — add-batch, frame PNG pickers, and output folder dialogs all open starting at `event.root_path`
