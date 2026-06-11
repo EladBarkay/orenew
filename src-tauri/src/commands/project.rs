@@ -86,6 +86,24 @@ pub async fn add_batch(
 }
 
 #[tauri::command]
+pub async fn delete_batch(
+    event_id: Uuid,
+    batch_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<Event, String> {
+    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    if let Some(batch) = event.batches.iter().find(|b| b.id == batch_id) {
+        let batch_path = batch.source_path.clone();
+        if let Ok(mut watcher) = state.watcher.lock() {
+            let _ = watcher.unwatch(&batch_path);
+        }
+    }
+    event.batches.retain(|b| b.id != batch_id);
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    Ok(event)
+}
+
+#[tauri::command]
 pub async fn refresh_batch(
     event_id: Uuid,
     batch_id: Uuid,

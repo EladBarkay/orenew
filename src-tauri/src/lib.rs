@@ -55,6 +55,7 @@ pub fn run() {
             commands::project::set_output_folder,
             commands::project::add_batch,
             commands::project::delete_event,
+            commands::project::delete_batch,
             commands::project::refresh_batch,
             commands::gallery::list_photos,
             commands::gallery::get_thumbnail,

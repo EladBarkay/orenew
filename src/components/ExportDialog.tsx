@@ -27,7 +27,11 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
     : 0;
 
   async function pickOutputFolder() {
-    const folder = await openDialog({ directory: true, multiple: false });
+    const folder = await openDialog({
+      directory: true,
+      multiple: false,
+      defaultPath: event.root_path ?? undefined,
+    });
     if (!folder) return;
     await invoke("set_output_folder", { eventId: event.id, folder });
     onEventUpdate({ ...event, output_folder: folder as string });
@@ -74,7 +78,12 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
           )}
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => invoke("open_path", { path: result.output_dir }).catch(() => {})}
+              onClick={async () => {
+                try {
+                  const { openPath } = await import("@tauri-apps/plugin-opener");
+                  await openPath(result.output_dir);
+                } catch {}
+              }}
               className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
             >
               Open folder

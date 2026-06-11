@@ -23,7 +23,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) 
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(1);
   const [dpi, setDpi] = useState(300);
-  const [margin, setMargin] = useState(40);
+  const [margin, setMargin] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 

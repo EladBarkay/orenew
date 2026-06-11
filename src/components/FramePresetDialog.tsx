@@ -23,6 +23,7 @@ export default function FramePresetDialog({ event, onCreated, onClose }: Props) 
     const path = await openFilePicker({
       multiple: false,
       filters: [{ name: "PNG frame", extensions: ["png"] }],
+      defaultPath: event.root_path ?? undefined,
     });
     if (path) setter(path as string);
   }

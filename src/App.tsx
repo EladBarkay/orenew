@@ -10,12 +10,22 @@ import { MagnetEvent, Photo, PhotoBatch } from "./types";
 
 type Modal = "export" | "print" | "addFrame" | null;
 
+function batchDisplayPath(batchPath: string, rootPath: string | null): string {
+  if (!rootPath) return batchPath;
+  const norm = (s: string) => s.replace(/\\/g, "/");
+  const root = norm(rootPath).replace(/\/$/, "");
+  const path = norm(batchPath);
+  if (path.startsWith(root + "/")) return path.slice(root.length + 1) || batchPath;
+  return batchPath;
+}
+
 export default function App() {
   const [event, setEvent] = useState<MagnetEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [status, setStatus] = useState("");
+  const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
 
   // Stable ref so the folder-changed listener always sees current event without re-registering
   const eventRef = useRef<MagnetEvent | null>(null);
@@ -86,11 +96,48 @@ export default function App() {
     }
   }
 
+  async function deleteBatch(batch: PhotoBatch) {
+    if (!event) return;
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    const yes = await confirm(
+      `Remove batch "${batch.name}" from this event? Files are not deleted.`,
+      { title: "Remove batch", kind: "warning" }
+    );
+    if (!yes) return;
+    try {
+      const updated = await invoke<MagnetEvent>("delete_batch", { eventId: event.id, batchId: batch.id });
+      updateEvent(updated);
+      if (activeBatch?.id === batch.id) {
+        setActiveBatch(updated.batches[0] ?? null);
+        setSelected(null);
+      }
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
+  function reorderBatch(targetId: string) {
+    if (!event || !draggedBatchId || draggedBatchId === targetId) return;
+    const batches = [...event.batches];
+    const fromIdx = batches.findIndex((b) => b.id === draggedBatchId);
+    const toIdx = batches.findIndex((b) => b.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = batches.splice(fromIdx, 1);
+    batches.splice(toIdx, 0, moved);
+    const updated = { ...event, batches };
+    setEvent(updated);
+    invoke("save_event", { event: updated }).catch(() => {});
+  }
+
   async function addBatch() {
     if (!event) return;
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false });
+      const folder = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: event.root_path ?? undefined,
+      });
       if (!folder) return;
       setStatus("Loading batch…");
       const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
@@ -197,15 +244,54 @@ export default function App() {
                     </button>
                   </p>
                 ) : (
-                  event.batches.map((b) => (
-                    <SidebarItem
-                      key={b.id}
-                      label={b.name}
-                      sublabel={`${b.photos.length} photos`}
-                      active={b.id === activeBatch?.id}
-                      onClick={() => { setActiveBatch(b); setSelected(null); }}
-                    />
-                  ))
+                  event.batches.map((b) => {
+                    const displayPath = batchDisplayPath(b.source_path, event.root_path);
+                    return (
+                      <div
+                        key={b.id}
+                        draggable
+                        onDragStart={() => setDraggedBatchId(b.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); reorderBatch(b.id); }}
+                        onDragEnd={() => setDraggedBatchId(null)}
+                        className={`group relative ${draggedBatchId === b.id ? "opacity-40" : ""}`}
+                      >
+                        <button
+                          onClick={() => { setActiveBatch(b); setSelected(null); }}
+                          onDoubleClick={async () => {
+                            try {
+                              const { openPath } = await import("@tauri-apps/plugin-opener");
+                              await openPath(b.source_path);
+                            } catch {}
+                          }}
+                          className={[
+                            "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors",
+                            b.id === activeBatch?.id
+                              ? "bg-blue-600/20 text-blue-300"
+                              : "text-neutral-300 hover:bg-neutral-700/60",
+                          ].join(" ")}
+                        >
+                          <span className="block truncate">{b.name}</span>
+                          <span
+                            className="block text-[10px] text-neutral-500 truncate"
+                            title={b.source_path}
+                          >
+                            {displayPath}
+                          </span>
+                          <span className="block text-[10px] text-neutral-600">
+                            {b.photos.length} photos
+                          </span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteBatch(b); }}
+                          title="Remove batch"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <SmallTrashIcon />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </Section>
 
@@ -397,6 +483,15 @@ function PrintIcon() {
 function TrashIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+  );
+}
+
+function SmallTrashIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
