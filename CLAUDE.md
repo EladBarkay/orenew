@@ -87,36 +87,70 @@ Key format: `MAGNET-{BASE32(HMAC-SHA256(email|expiry|tier, SECRET))}`
 
 ## Folder Structure
 
+> Reflects the actual codebase (kept in sync — do not revert to the original plan).
+
 ```
 magnet/
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs
-│   │   ├── commands/          # Thin Tauri IPC handlers (batch, preview, project, license)
-│   │   ├── photo/             # Core image processing — no Tauri deps, fully testable
-│   │   │   ├── loader.rs      # load_photo(), read_exif(), read_xmp()
-│   │   │   ├── orientation.rs # detect_orientation()
-│   │   │   ├── crop.rs        # crop_image(), CropRect
-│   │   │   ├── frame.rs       # apply_frame_overlay(), FramePreset
-│   │   │   ├── export.rs      # export_print_ready()
-│   │   │   └── batch.rs       # BatchProcessor, process_batch()
-│   │   ├── canvas/            # Canvas compositor (tile photos onto CanvasPreset)
-│   │   ├── project/           # Event persistence: model.rs + persistence.rs (serde_json)
-│   │   ├── preview/           # thumbnail.rs + framed_preview.rs
-│   │   ├── license/           # validator.rs
-│   │   └── watcher/           # fs_watcher.rs — notify + print_count reset logic
+│   │   ├── main.rs            # thin entry → magnet_lib::run()
+│   │   ├── lib.rs             # AppState, Tauri builder, invoke_handler, license load
+│   │   ├── commands/          # Thin Tauri IPC handlers
+│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches
+│   │   │   ├── gallery.rs     # list_photos, get_thumbnail, get_framed_preview, overrides (preview IPC lives here)
+│   │   │   ├── batch.rs       # export_batch, print_photos (watermark per tier)
+│   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
+│   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
+│   │   │   └── license.rs     # validate_license, get_license_info, clear_license
+│   │   ├── photo/             # Core image processing — no Tauri deps, unit-tested
+│   │   │   ├── loader.rs      # load_photo(), read_exif_orientation(), compute_content_hash() (content-based)
+│   │   │   ├── orientation.rs # detect_orientation() → Photo::effective_orientation()
+│   │   │   ├── crop.rs        # compute_crop_rect() (center + rule-of-thirds), apply_crop() [tests]
+│   │   │   ├── frame.rs       # apply_frame_overlay(), apply_frame_overlay_image() [tests]
+│   │   │   ├── export.rs      # export_print_ready() — RGB JPEG q95, 300 DPI JFIF
+│   │   │   └── batch.rs       # frame_photo_for_canvas() (export/print per-photo path)
+│   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
+│   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
+│   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px)
+│   │   ├── license/           # validator.rs — HMAC-SHA256 key validation [tests]
+│   │   └── watcher/           # fs_watcher.rs — notify, emits `fs-changed` with changed path
 │   └── Cargo.toml
 ├── src/
-│   ├── components/
-│   │   ├── Gallery/           # Virtual photo grid with print count badges
-│   │   ├── FramePicker/       # Per-event frame PNG selector
-│   │   ├── Preview/           # Single photo framed preview
-│   │   ├── BatchProgress/     # Export/print progress overlay
-│   │   └── Settings/          # License key entry, output folder config
-│   ├── store/                 # Jotai atoms (eventAtom, batchAtom, licenseAtom)
-│   └── hooks/                 # useBatch.ts, usePreview.ts
-└── package.json
+│   ├── components/            # flat (no nested folders)
+│   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid
+│   │   ├── PhotoCard.tsx      # thumbnail tile + print-count badge + print-qty stepper
+│   │   ├── PreviewPanel.tsx   # framed preview + metadata
+│   │   ├── ExportDialog.tsx   # export config + progress
+│   │   ├── PrintConfirmDialog.tsx  # frame+canvas preset pickers → print; "Sent X files"
+│   │   ├── FramePresetDialog.tsx   # create/edit frame preset
+│   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used by manager)
+│   │   ├── CanvasPresetManager.tsx # list/edit/delete canvas presets
+│   │   └── SettingsDialog.tsx      # license key entry, tier/expiry
+│   └── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useExportProgress.ts
+└── package.json              # state via React useState/useRef in App.tsx (no jotai, no src/store/)
 ```
+
+### Print flow (current)
+
+Per-photo print quantities are set on gallery cards (App `printQueue` state, separate from
+historical `print_count`). The toolbar **Print** button opens `PrintConfirmDialog` to pick a
+frame preset + canvas preset, then calls `print_photos`, which composes watermarked-if-Free
+canvases to a temp dir and returns the file count ("Sent X files for printing"). Actual printer
+submission is deferred — no files are sent to the OS printer yet.
+
+### Licensing (current)
+
+`license.json` is loaded into `AppState.license` at startup; `AppState::tier()` gates
+watermarking in `export_batch`/`print_photos`. Free tier composites a procedural diagonal-stripe
+watermark (no bundled asset/font). Settings UI activates/clears licenses.
+
+### File watcher (current)
+
+`FsWatcher` emits a Tauri `fs-changed` event with the changed file path. The frontend decides:
+a frame-PNG path → bump a preview nonce to refetch framed previews; otherwise refresh the owning
+batch via `refresh_batch` (which recomputes content hashes and resets `print_count` for changed
+photos in `merge_photos`). Thumbnails bust automatically because `useThumbnail` keys on
+`content_hash`. `sync_watches` re-establishes watches (batch folders + frame dirs) on event open.
 
 ## Performance Targets
 
