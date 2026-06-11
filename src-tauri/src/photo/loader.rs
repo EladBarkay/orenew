@@ -35,25 +35,26 @@ pub fn xmp_path_for(photo_path: &Path) -> Option<PathBuf> {
     if xmp.exists() { Some(xmp) } else { None }
 }
 
-/// Fast hash of photo identity using file metadata (size + mtime) instead of full content.
-/// Detects file changes without reading the entire file into memory.
+/// Content-based SHA-256 of the photo bytes followed by the XMP sidecar bytes
+/// (per spec). Streams both files in chunks so memory stays bounded regardless
+/// of file size. Changing either file changes the hash, which resets print_count
+/// downstream in `merge_photos`.
 pub fn compute_content_hash(photo_path: &Path, xmp_path: Option<&Path>) -> Result<String> {
     let mut hasher = Sha256::new();
-    hasher.update(photo_path.to_string_lossy().as_bytes());
-    let meta = std::fs::metadata(photo_path)
-        .with_context(|| format!("stat {}", photo_path.display()))?;
-    hasher.update(meta.len().to_le_bytes());
-    if let Ok(mtime) = meta.modified() {
-        hasher.update(format!("{mtime:?}").as_bytes());
-    }
+
+    let mut file = std::fs::File::open(photo_path)
+        .with_context(|| format!("opening {} for hashing", photo_path.display()))?;
+    std::io::copy(&mut file, &mut hasher)
+        .with_context(|| format!("hashing {}", photo_path.display()))?;
+
     if let Some(xmp) = xmp_path {
-        if let Ok(xmp_meta) = std::fs::metadata(xmp) {
-            hasher.update(xmp_meta.len().to_le_bytes());
-            if let Ok(mtime) = xmp_meta.modified() {
-                hasher.update(format!("{mtime:?}").as_bytes());
-            }
+        if let Ok(mut xmp_file) = std::fs::File::open(xmp) {
+            // Domain separator so photo+xmp can't collide with a single blob.
+            hasher.update(b"\x00xmp\x00");
+            let _ = std::io::copy(&mut xmp_file, &mut hasher);
         }
     }
+
     Ok(format!("{:x}", hasher.finalize()))
 }
 
