@@ -69,10 +69,10 @@ pub async fn set_crop_override(
     state.store.save(&event).map_err(|e| e.to_string())
 }
 
-fn find_photo<'a>(
-    event: &'a crate::project::model::Event,
+fn find_photo(
+    event: &crate::project::model::Event,
     photo_id: Uuid,
-) -> Result<&'a crate::project::model::Photo, String> {
+) -> Result<&crate::project::model::Photo, String> {
     event
         .batches
         .iter()
@@ -81,10 +81,10 @@ fn find_photo<'a>(
         .ok_or_else(|| format!("photo {photo_id} not found"))
 }
 
-fn find_photo_mut<'a>(
-    event: &'a mut crate::project::model::Event,
+fn find_photo_mut(
+    event: &mut crate::project::model::Event,
     photo_id: Uuid,
-) -> Result<&'a mut crate::project::model::Photo, String> {
+) -> Result<&mut crate::project::model::Photo, String> {
     event
         .batches
         .iter_mut()

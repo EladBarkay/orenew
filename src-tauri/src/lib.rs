@@ -6,7 +6,7 @@ mod canvas;
 mod watcher;
 mod license;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use project::persistence::EventStore;
 use preview::thumbnail::ThumbnailCache;
@@ -33,7 +33,7 @@ impl AppState {
     }
 
     /// Load license.json from disk into a validated, non-expired LicenseInfo.
-    pub fn load_license(app_data_dir: &PathBuf) -> Option<LicenseInfo> {
+    pub fn load_license(app_data_dir: &Path) -> Option<LicenseInfo> {
         let path = app_data_dir.join("license.json");
         let data = std::fs::read_to_string(path).ok()?;
         let info: LicenseInfo = serde_json::from_str(&data).ok()?;

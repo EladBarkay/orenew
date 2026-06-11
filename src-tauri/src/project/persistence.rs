@@ -34,7 +34,14 @@ impl EventStore {
         let path = self.event_path(id);
         let data = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let event: Event = serde_json::from_str(&data).context("deserializing event")?;
+        let mut event: Event = serde_json::from_str(&data).context("deserializing event")?;
+        
+        // Auto-migrate canvas presets if needed
+        let migrated = event.migrate_canvas_margins();
+        if migrated {
+            self.save(&event)?;
+        }
+        
         self.cache.lock().unwrap().insert(id, event.clone());
         Ok(event)
     }
@@ -57,9 +64,17 @@ impl EventStore {
             if json_path.exists() {
                 match std::fs::read_to_string(&json_path)
                     .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .and_then(|s| serde_json::from_str::<Event>(&s).ok())
                 {
-                    Some(event) => events.push(event),
+                    Some(mut event) => {
+                        // Auto-migrate canvas presets if needed
+                        let migrated = event.migrate_canvas_margins();
+                        if migrated {
+                            // Save the migrated event back to disk
+                            let _ = self.save(&event);
+                        }
+                        events.push(event)
+                    },
                     None => log::warn!("skipping malformed event at {}", json_path.display()),
                 }
             }

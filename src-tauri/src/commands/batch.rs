@@ -147,14 +147,14 @@ pub async fn print_photos(
 
     let watermark = matches!(state.tier(), crate::license::validator::Tier::Free);
 
-    // Expand photos by their requested quantities: a photo with qty=3 appears 3 times
+     // Expand photos by their requested quantities: a photo with qty=3 appears 3 times
     let photos: Vec<_> = event
         .batches.iter()
         .flat_map(|b| &b.photos)
         .filter(|p| photo_ids.contains(&p.id))
         .flat_map(|p| {
             let qty = quantities.get(&p.id).copied().unwrap_or(1).max(1);
-            std::iter::repeat(p.clone()).take(qty as usize)
+            std::iter::repeat_n(p.clone(), qty as usize)
         })
         .collect();
 

@@ -7,14 +7,12 @@ use uuid::Uuid;
 
 pub struct LoadedPhoto {
     pub image: DynamicImage,
-    pub exif_orientation: Option<Orientation>,
 }
 
 pub fn load_photo(path: &Path) -> Result<LoadedPhoto> {
     let image = image::open(path)
         .with_context(|| format!("opening image {}", path.display()))?;
-    let exif_orientation = read_exif_orientation(path);
-    Ok(LoadedPhoto { image, exif_orientation })
+    Ok(LoadedPhoto { image })
 }
 
 pub fn read_exif_orientation(path: &Path) -> Option<Orientation> {

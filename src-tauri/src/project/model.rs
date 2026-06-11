@@ -14,6 +14,9 @@ pub struct Event {
     pub canvas_presets: Vec<CanvasPreset>,
     pub output_folder: Option<PathBuf>,
     pub active_frame_preset_id: Option<Uuid>,
+    /// Tracks whether canvas presets have been migrated from margin_px: 40 → 0
+    #[serde(default)]
+    pub migrated_margin: bool,
 }
 
 impl Event {
@@ -27,7 +30,27 @@ impl Event {
             canvas_presets: Vec::new(),
             output_folder: None,
             active_frame_preset_id: None,
+            migrated_margin: false,
         }
+    }
+
+    /// Auto-migrate canvas presets from margin_px: 40 → 0 if not already migrated.
+    /// Returns whether any presets were modified.
+    pub fn migrate_canvas_margins(&mut self) -> bool {
+        if self.migrated_margin {
+            return false;
+        }
+        let mut modified = false;
+        for preset in &mut self.canvas_presets {
+            if preset.margin_px == 40 {
+                preset.margin_px = 0;
+                modified = true;
+            }
+        }
+        if modified {
+            self.migrated_margin = true;
+        }
+        modified
     }
 }
 
@@ -67,13 +90,13 @@ pub struct Photo {
 impl Photo {
     pub fn effective_orientation(&self) -> Orientation {
         self.orientation_override
-            .unwrap_or_else(|| {
+            .unwrap_or(
                 if self.width >= self.height {
                     Orientation::Landscape
                 } else {
                     Orientation::Portrait
                 }
-            })
+            )
     }
 }
 
