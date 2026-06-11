@@ -6,6 +6,8 @@ type Props = {
   event: MagnetEvent;
   onCreated: (preset: CanvasPreset, updatedEvent: MagnetEvent) => void;
   onCancel: () => void;
+  /** When provided, the form edits this preset instead of creating a new one. */
+  editing?: CanvasPreset;
 };
 
 const PRESETS = [
@@ -15,15 +17,15 @@ const PRESETS = [
   { label: "Custom", w: 0, h: 0, n: 0, cols: 0, rows: 0 },
 ];
 
-export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) {
-  const [name, setName] = useState("");
-  const [w, setW] = useState(2400);
-  const [h, setH] = useState(1600);
-  const [n, setN] = useState(2);
-  const [cols, setCols] = useState(2);
-  const [rows, setRows] = useState(1);
-  const [dpi, setDpi] = useState(300);
-  const [margin, setMargin] = useState(0);
+export default function CanvasPresetForm({ event, onCreated, onCancel, editing }: Props) {
+  const [name, setName] = useState(editing?.name ?? "");
+  const [w, setW] = useState(editing?.canvas_width_px ?? 2400);
+  const [h, setH] = useState(editing?.canvas_height_px ?? 1600);
+  const [n, setN] = useState(editing?.photos_per_canvas ?? 2);
+  const [cols, setCols] = useState(editing?.cols ?? 2);
+  const [rows, setRows] = useState(editing?.rows ?? 1);
+  const [dpi, setDpi] = useState(editing?.dpi ?? 300);
+  const [margin, setMargin] = useState(editing?.margin_px ?? 0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,13 +41,23 @@ export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) 
     if (cols * rows < n) { setError(`Grid ${cols}×${rows} has ${cols*rows} slots but photos/canvas is ${n}`); return; }
     setSaving(true);
     setError("");
+    const input = { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
+      photos_per_canvas: n, dpi, margin_px: margin, cols, rows };
     try {
-      const preset = await invoke<CanvasPreset>("create_canvas_preset", {
-        eventId: event.id,
-        preset: { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
-          photos_per_canvas: n, dpi, margin_px: margin, cols, rows },
-      });
-      onCreated(preset, { ...event, canvas_presets: [...event.canvas_presets, preset] });
+      if (editing) {
+        const preset = await invoke<CanvasPreset>("update_canvas_preset", {
+          eventId: event.id, presetId: editing.id, preset: input,
+        });
+        onCreated(preset, {
+          ...event,
+          canvas_presets: event.canvas_presets.map((p) => (p.id === preset.id ? preset : p)),
+        });
+      } else {
+        const preset = await invoke<CanvasPreset>("create_canvas_preset", {
+          eventId: event.id, preset: input,
+        });
+        onCreated(preset, { ...event, canvas_presets: [...event.canvas_presets, preset] });
+      }
     } catch (e) {
       setError(String(e));
       setSaving(false);
@@ -54,7 +66,9 @@ export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) 
 
   return (
     <div className="bg-neutral-800 rounded-lg p-4 space-y-3">
-      <p className="text-sm font-medium text-neutral-200">New canvas preset</p>
+      <p className="text-sm font-medium text-neutral-200">
+        {editing ? "Edit canvas preset" : "New canvas preset"}
+      </p>
 
       {/* Quick-pick templates */}
       <div className="flex flex-wrap gap-1.5">
@@ -107,7 +121,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel }: Props) 
         </button>
         <button onClick={save} disabled={saving}
           className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded font-medium">
-          {saving ? "Saving…" : "Save preset"}
+          {saving ? "Saving…" : editing ? "Save changes" : "Save preset"}
         </button>
       </div>
     </div>

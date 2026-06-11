@@ -49,6 +49,30 @@ pub async fn create_canvas_preset(
 }
 
 #[tauri::command]
+pub async fn update_canvas_preset(
+    event_id: Uuid,
+    preset_id: Uuid,
+    preset: CanvasPresetInput,
+    state: State<'_, AppState>,
+) -> Result<CanvasPreset, String> {
+    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    let existing = event
+        .canvas_presets.iter_mut().find(|p| p.id == preset_id)
+        .ok_or_else(|| format!("canvas preset {preset_id} not found"))?;
+    existing.name = preset.name;
+    existing.canvas_width_px = preset.canvas_width_px;
+    existing.canvas_height_px = preset.canvas_height_px;
+    existing.photos_per_canvas = preset.photos_per_canvas;
+    existing.dpi = preset.dpi;
+    existing.margin_px = preset.margin_px;
+    existing.cols = preset.cols;
+    existing.rows = preset.rows;
+    let updated = existing.clone();
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    Ok(updated)
+}
+
+#[tauri::command]
 pub async fn delete_canvas_preset(
     event_id: Uuid,
     preset_id: Uuid,
