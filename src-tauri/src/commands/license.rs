@@ -13,6 +13,10 @@ pub async fn validate_license(
     let path = state.app_data_dir.join("license.json");
     let data = serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?;
     std::fs::write(&path, data).map_err(|e| e.to_string())?;
+    // Update in-memory tier so subsequent exports/prints reflect it immediately
+    if let Ok(mut guard) = state.license.lock() {
+        *guard = Some(info.clone());
+    }
     Ok(info)
 }
 
@@ -29,4 +33,16 @@ pub async fn get_license_info(state: State<'_, AppState>) -> Result<Option<Licen
         return Ok(None);
     }
     Ok(Some(info))
+}
+
+#[tauri::command]
+pub async fn clear_license(state: State<'_, AppState>) -> Result<(), String> {
+    let path = state.app_data_dir.join("license.json");
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    if let Ok(mut guard) = state.license.lock() {
+        *guard = None;
+    }
+    Ok(())
 }

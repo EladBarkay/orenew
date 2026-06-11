@@ -49,6 +49,14 @@ export type CanvasPreset = {
   rows: number;
 };
 
+export type Tier = "free" | "pro";
+
+export type LicenseInfo = {
+  email: string;
+  expiry: string; // ISO date (YYYY-MM-DD)
+  tier: Tier;
+};
+
 export type MagnetEvent = {
   id: string;
   name: string;

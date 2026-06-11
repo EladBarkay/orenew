@@ -76,3 +76,60 @@ pub fn validate_key(key: &str, email: &str) -> Result<LicenseInfo> {
 
     Ok(LicenseInfo { email: email.to_string(), expiry, tier })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a valid key for `payload` using the compiled-in secret.
+    fn make_key(payload: &str) -> String {
+        let mut mac = HmacSha256::new_from_slice(LICENSE_SECRET.as_bytes()).unwrap();
+        mac.update(payload.as_bytes());
+        let tag = mac.finalize().into_bytes();
+        let mut bytes = payload.as_bytes().to_vec();
+        bytes.extend_from_slice(&tag);
+        let encoded =
+            base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &bytes);
+        format!("MAGNET-{encoded}")
+    }
+
+    #[test]
+    fn valid_pro_key_parses() {
+        let key = make_key("user@example.com|2999-01-01|pro");
+        let info = validate_key(&key, "user@example.com").unwrap();
+        assert_eq!(info.email, "user@example.com");
+        assert_eq!(info.tier, Tier::Pro);
+    }
+
+    #[test]
+    fn valid_free_key_parses() {
+        let key = make_key("a@b.com|2999-01-01|free");
+        assert_eq!(validate_key(&key, "a@b.com").unwrap().tier, Tier::Free);
+    }
+
+    #[test]
+    fn wrong_email_rejected() {
+        let key = make_key("user@example.com|2999-01-01|pro");
+        assert!(validate_key(&key, "someone@else.com").is_err());
+    }
+
+    #[test]
+    fn expired_key_rejected() {
+        let key = make_key("user@example.com|2000-01-01|pro");
+        assert!(validate_key(&key, "user@example.com").is_err());
+    }
+
+    #[test]
+    fn tampered_key_rejected() {
+        let mut key = make_key("user@example.com|2999-01-01|pro");
+        // Flip the last character to break the HMAC.
+        let last = key.pop().unwrap();
+        key.push(if last == 'A' { 'B' } else { 'A' });
+        assert!(validate_key(&key, "user@example.com").is_err());
+    }
+
+    #[test]
+    fn missing_prefix_rejected() {
+        assert!(validate_key("NOTAKEY", "user@example.com").is_err());
+    }
+}

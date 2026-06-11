@@ -11,12 +11,37 @@ use std::sync::Mutex;
 use project::persistence::EventStore;
 use preview::thumbnail::ThumbnailCache;
 use watcher::fs_watcher::FsWatcher;
+use license::validator::{LicenseInfo, Tier};
 
 pub struct AppState {
     pub store: EventStore,
     pub thumbs: ThumbnailCache,
     pub app_data_dir: PathBuf,
     pub watcher: Mutex<FsWatcher>,
+    /// Currently active license, if any. `None` => Free tier.
+    pub license: Mutex<Option<LicenseInfo>>,
+}
+
+impl AppState {
+    /// Effective tier — Free unless a non-expired Pro license is active.
+    pub fn tier(&self) -> Tier {
+        self.license
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|l| l.tier.clone()))
+            .unwrap_or(Tier::Free)
+    }
+
+    /// Load license.json from disk into a validated, non-expired LicenseInfo.
+    pub fn load_license(app_data_dir: &PathBuf) -> Option<LicenseInfo> {
+        let path = app_data_dir.join("license.json");
+        let data = std::fs::read_to_string(path).ok()?;
+        let info: LicenseInfo = serde_json::from_str(&data).ok()?;
+        if info.expiry < chrono::Local::now().date_naive() {
+            return None;
+        }
+        Some(info)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -35,15 +60,18 @@ pub fn run() {
                 .expect("ThumbnailCache init");
 
             let app_handle = app.handle().clone();
-            let fs_watcher = FsWatcher::new(move |folder: PathBuf| {
-                let _ = app_handle.emit("folder-changed", folder.to_string_lossy().to_string());
+            let fs_watcher = FsWatcher::new(move |path: PathBuf| {
+                let _ = app_handle.emit("fs-changed", path.to_string_lossy().to_string());
             }).expect("FsWatcher init");
+
+            let license = AppState::load_license(&data_dir);
 
             app.manage(AppState {
                 store,
                 thumbs,
                 app_data_dir: data_dir,
                 watcher: Mutex::new(fs_watcher),
+                license: Mutex::new(license),
             });
             Ok(())
         })
@@ -57,6 +85,7 @@ pub fn run() {
             commands::project::delete_event,
             commands::project::delete_batch,
             commands::project::refresh_batch,
+            commands::project::sync_watches,
             commands::gallery::list_photos,
             commands::gallery::get_thumbnail,
             commands::gallery::get_framed_preview,
@@ -66,12 +95,15 @@ pub fn run() {
             commands::batch::print_photos,
             commands::canvas_preset::list_canvas_presets,
             commands::canvas_preset::create_canvas_preset,
+            commands::canvas_preset::update_canvas_preset,
             commands::canvas_preset::delete_canvas_preset,
             commands::frame_preset::list_frame_presets,
             commands::frame_preset::create_frame_preset,
+            commands::frame_preset::update_frame_preset,
             commands::frame_preset::delete_frame_preset,
             commands::license::validate_license,
             commands::license::get_license_info,
+            commands::license::clear_license,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
