@@ -4,11 +4,13 @@ import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
 import ExportDialog from "./components/ExportDialog";
-import PrintDialog from "./components/PrintDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
-import { MagnetEvent, Photo, PhotoBatch } from "./types";
+import PrintConfirmDialog from "./components/PrintConfirmDialog";
+import SettingsDialog from "./components/SettingsDialog";
+import CanvasPresetManager from "./components/CanvasPresetManager";
+import { MagnetEvent, Photo, PhotoBatch, FramePreset, LicenseInfo } from "./types";
 
-type Modal = "export" | "print" | "addFrame" | null;
+type Modal = "export" | "print" | "addFrame" | "settings" | "canvasPresets" | null;
 
 function batchDisplayPath(batchPath: string, rootPath: string | null): string {
   if (!rootPath) return batchPath;
@@ -26,6 +28,21 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
+  // Bumped whenever a frame PNG changes on disk, to force preview refetch.
+  const [frameNonce, setFrameNonce] = useState(0);
+  // Frame preset currently being edited (opens FramePresetDialog in edit mode).
+  const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
+  // Per-photo print quantities for the current print queue (session-only,
+  // separate from each photo's historical print_count).
+  const [printQueue, setPrintQueue] = useState<Record<string, number>>({});
+
+  // Load any saved license once on startup.
+  useEffect(() => {
+    invoke<LicenseInfo | null>("get_license_info")
+      .then((info) => setLicense(info ?? null))
+      .catch(() => {});
+  }, []);
 
   // Stable ref so the folder-changed listener always sees current event without re-registering
   const eventRef = useRef<MagnetEvent | null>(null);
@@ -33,15 +50,32 @@ export default function App() {
   useEffect(() => { eventRef.current = event; }, [event]);
   useEffect(() => { activeBatchRef.current = activeBatch; }, [activeBatch]);
 
-  // Wire up the FS watcher: when a batch folder changes, refresh that batch
+  // Wire up the FS watcher. The backend emits the changed file path; we decide
+  // whether it belongs to a batch folder (→ refresh that batch) or is a frame
+  // PNG (→ bump the preview nonce so framed previews refetch).
   useEffect(() => {
-    const unlistenPromise = listen<string>("folder-changed", async (e) => {
+    const norm = (s: string) => s.replace(/\\/g, "/");
+    const parentDir = (p: string) => p.slice(0, p.lastIndexOf("/"));
+
+    const unlistenPromise = listen<string>("fs-changed", async (e) => {
       const cur = eventRef.current;
       if (!cur) return;
-      const changedFolder = e.payload.replace(/\\/g, "/");
-      const batch = cur.batches.find(
-        (b) => b.source_path.replace(/\\/g, "/") === changedFolder
+      const changedPath = norm(e.payload);
+
+      // Frame PNG change → refresh previews.
+      const isFrame = cur.frame_presets.some(
+        (fp) =>
+          norm(fp.landscape_frame_path) === changedPath ||
+          norm(fp.portrait_frame_path) === changedPath
       );
+      if (isFrame) {
+        setFrameNonce((n) => n + 1);
+        return;
+      }
+
+      // Photo change → refresh the owning batch.
+      const folder = parentDir(changedPath);
+      const batch = cur.batches.find((b) => norm(b.source_path) === folder);
       if (!batch) return;
       try {
         const updated = await invoke<MagnetEvent>("refresh_batch", {
@@ -49,7 +83,6 @@ export default function App() {
           batchId: batch.id,
         });
         setEvent(updated);
-        // Keep activeBatch in sync
         const active = activeBatchRef.current;
         if (active) {
           const refreshed = updated.batches.find((b) => b.id === active.id);
@@ -72,6 +105,9 @@ export default function App() {
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
       setSelected(null);
+      setPrintQueue({});
+      // Re-establish FS watches for this event's batches + frame PNGs.
+      invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
     } catch (e) {
       setStatus(`Error: ${e}`);
@@ -129,6 +165,30 @@ export default function App() {
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
+  async function deleteFramePreset(preset: FramePreset) {
+    if (!event) return;
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    const yes = await confirm(
+      `Delete frame preset "${preset.name}"? The PNG files are not deleted.`,
+      { title: "Delete frame preset", kind: "warning" }
+    );
+    if (!yes) return;
+    try {
+      await invoke("delete_frame_preset", { eventId: event.id, presetId: preset.id });
+      const remaining = event.frame_presets.filter((p) => p.id !== preset.id);
+      updateEvent({
+        ...event,
+        frame_presets: remaining,
+        active_frame_preset_id:
+          event.active_frame_preset_id === preset.id
+            ? remaining[0]?.id ?? null
+            : event.active_frame_preset_id,
+      });
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
   async function addBatch() {
     if (!event) return;
     try {
@@ -162,6 +222,49 @@ export default function App() {
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
   const hasFramePreset = !!event?.active_frame_preset_id;
+  const queuedPrints = Object.values(printQueue).reduce((s, q) => s + q, 0);
+
+  function adjustQty(photoId: string, delta: number) {
+    setPrintQueue((prev) => {
+      const next = Math.max(0, (prev[photoId] ?? 0) + delta);
+      const updated = { ...prev };
+      if (next === 0) delete updated[photoId];
+      else updated[photoId] = next;
+      return updated;
+    });
+  }
+
+  // After a successful print: optimistically bump print_count for queued photos
+  // (the backend has already persisted these increments) and clear the queue.
+  function handlePrinted() {
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        batches: prev.batches.map((b) => ({
+          ...b,
+          photos: b.photos.map((p) =>
+            printQueue[p.id]
+              ? { ...p, print_count: p.print_count + printQueue[p.id] }
+              : p
+          ),
+        })),
+      };
+    });
+    setActiveBatch((prev) =>
+      prev
+        ? {
+            ...prev,
+            photos: prev.photos.map((p) =>
+              printQueue[p.id]
+                ? { ...p, print_count: p.print_count + printQueue[p.id] }
+                : p
+            ),
+          }
+        : prev
+    );
+    setPrintQueue({});
+  }
 
   return (
     <div className="flex flex-col h-screen bg-neutral-900 text-neutral-100 select-none">
@@ -191,12 +294,18 @@ export default function App() {
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => setModal("print")}
-                disabled={!activeBatch || activeBatch.photos.length === 0 || !hasFramePreset}
+                disabled={!activeBatch || queuedPrints === 0 || !hasFramePreset}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm transition-colors"
-                title={!hasFramePreset ? "Set an active frame preset first" : ""}
+                title={
+                  !hasFramePreset
+                    ? "Set an active frame preset first"
+                    : queuedPrints === 0
+                    ? "Set print quantities on photos in the gallery first"
+                    : ""
+                }
               >
                 <PrintIcon />
-                Print
+                Print{queuedPrints > 0 ? ` (${queuedPrints})` : ""}
               </button>
 
               <button
@@ -217,6 +326,26 @@ export default function App() {
             {status}
           </span>
         )}
+
+        <button
+          onClick={() => setModal("settings")}
+          title="Settings & license"
+          className={[
+            "flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors",
+            event ? "" : "ml-auto",
+            "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700",
+          ].join(" ")}
+        >
+          <SettingsIcon />
+          <span
+            className={[
+              "font-semibold px-1.5 py-0.5 rounded-full text-[10px]",
+              license?.tier === "pro" ? "bg-green-700/80 text-white" : "bg-neutral-700 text-neutral-300",
+            ].join(" ")}
+          >
+            {license?.tier === "pro" ? "Pro" : "Free"}
+          </span>
+        </button>
       </header>
 
       {/* Body */}
@@ -318,34 +447,71 @@ export default function App() {
                   </p>
                 ) : (
                   event.frame_presets.map((p) => (
-                    <SidebarItem
-                      key={p.id}
-                      label={p.name}
-                      sublabel={`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
-                      active={p.id === event.active_frame_preset_id}
-                      onClick={async () => {
-                        const updated = { ...event, active_frame_preset_id: p.id };
-                        setEvent(updated);
-                        await invoke("save_event", { event: updated }).catch(() => {});
-                      }}
-                    />
+                    <div key={p.id} className="group relative">
+                      <SidebarItem
+                        label={p.name}
+                        sublabel={`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
+                        active={p.id === event.active_frame_preset_id}
+                        onClick={async () => {
+                          const updated = { ...event, active_frame_preset_id: p.id };
+                          setEvent(updated);
+                          await invoke("save_event", { event: updated }).catch(() => {});
+                        }}
+                      />
+                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingFrame(p); }}
+                          title="Edit frame preset"
+                          className="p-1 text-neutral-500 hover:text-blue-400"
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteFramePreset(p); }}
+                          title="Delete frame preset"
+                          className="p-1 text-neutral-500 hover:text-red-400"
+                        >
+                          <SmallTrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   ))
                 )}
               </Section>
 
-              {event.canvas_presets.length > 0 && (
-                <Section label="Canvas presets">
-                  {event.canvas_presets.map((p) => (
+              <Section
+                label="Canvas presets"
+                action={
+                  <button
+                    onClick={() => setModal("canvasPresets")}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    Manage
+                  </button>
+                }
+              >
+                {event.canvas_presets.length === 0 ? (
+                  <p className="px-3 py-1 text-xs text-neutral-600">
+                    No presets —{" "}
+                    <button
+                      onClick={() => setModal("canvasPresets")}
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      add one
+                    </button>
+                  </p>
+                ) : (
+                  event.canvas_presets.map((p) => (
                     <SidebarItem
                       key={p.id}
                       label={p.name}
                       sublabel={`${p.canvas_width_px}×${p.canvas_height_px} · ${p.photos_per_canvas}-up`}
                       active={false}
-                      onClick={() => {}}
+                      onClick={() => setModal("canvasPresets")}
                     />
-                  ))}
-                </Section>
-              )}
+                  ))
+                )}
+              </Section>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs p-4 text-center">
@@ -361,12 +527,15 @@ export default function App() {
               photos={photos}
               selectedId={selected?.id ?? null}
               onSelect={setSelected}
+              printQueue={printQueue}
+              onQtyDelta={adjustQty}
             />
             {selected && (
               <PreviewPanel
                 event={event}
                 photo={selected}
                 onClose={() => setSelected(null)}
+                frameNonce={frameNonce}
               />
             )}
           </div>
@@ -384,13 +553,13 @@ export default function App() {
           onEventUpdate={updateEvent}
         />
       )}
-      {modal === "print" && event && activeBatch && (
-        <PrintDialog
+      {modal === "print" && event && (
+        <PrintConfirmDialog
           event={event}
-          batch={activeBatch}
+          printQueue={printQueue}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
-          initialPhotoId={selected?.id}
+          onPrinted={handlePrinted}
         />
       )}
       {modal === "addFrame" && event && (
@@ -398,9 +567,37 @@ export default function App() {
           event={event}
           onCreated={(updatedEvent) => {
             updateEvent(updatedEvent);
+            invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
             setModal(null);
           }}
           onClose={() => setModal(null)}
+        />
+      )}
+      {modal === "settings" && (
+        <SettingsDialog
+          license={license}
+          onClose={() => setModal(null)}
+          onLicenseChange={setLicense}
+        />
+      )}
+      {modal === "canvasPresets" && event && (
+        <CanvasPresetManager
+          event={event}
+          onClose={() => setModal(null)}
+          onEventUpdate={updateEvent}
+        />
+      )}
+      {editingFrame && event && (
+        <FramePresetDialog
+          event={event}
+          editing={editingFrame}
+          onCreated={(updatedEvent) => {
+            updateEvent(updatedEvent);
+            invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
+            setFrameNonce((n) => n + 1);
+            setEditingFrame(null);
+          }}
+          onClose={() => setEditingFrame(null)}
         />
       )}
     </div>
@@ -476,6 +673,26 @@ function PrintIcon() {
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }

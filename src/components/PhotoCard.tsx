@@ -7,17 +7,20 @@ type Props = {
   selected: boolean;
   onClick: () => void;
   cellSize: number;
+  /** Number queued for the next print run. */
+  printQty: number;
+  /** Adjust the queued print quantity by `delta` (clamped at 0). */
+  onQtyDelta: (delta: number) => void;
 };
 
-function PhotoCard({ photo, selected, onClick, cellSize }: Props) {
-  const src = useThumbnail(photo.path);
+function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta }: Props) {
+  const src = useThumbnail(photo.path, photo.content_hash);
   const filename = photo.path.split(/[\\/]/).pop() ?? photo.path;
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={[
-        "relative w-full h-full rounded overflow-hidden group focus:outline-none",
+        "relative w-full h-full rounded overflow-hidden group",
         "transition-all duration-100",
         selected
           ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-neutral-900"
@@ -25,22 +28,24 @@ function PhotoCard({ photo, selected, onClick, cellSize }: Props) {
       ].join(" ")}
       title={filename}
     >
-      {/* Thumbnail */}
-      {src ? (
-        <img
-          src={src}
-          alt={filename}
-          className="w-full h-full object-cover"
-          draggable={false}
-        />
-      ) : (
-        <div className="w-full h-full bg-neutral-800 animate-pulse" />
-      )}
+      {/* Thumbnail (click selects) */}
+      <button onClick={onClick} className="block w-full h-full focus:outline-none">
+        {src ? (
+          <img
+            src={src}
+            alt={filename}
+            className="w-full h-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div className="w-full h-full bg-neutral-800 animate-pulse" />
+        )}
+      </button>
 
-      {/* Bottom overlay: filename + print count */}
+      {/* Bottom overlay: filename + historical print count */}
       <div
         className={[
-          "absolute bottom-0 inset-x-0 flex items-end justify-between px-1.5 py-1",
+          "absolute bottom-0 inset-x-0 flex items-end justify-between px-1.5 py-1 pointer-events-none",
           "bg-gradient-to-t from-black/70 to-transparent",
           "opacity-0 group-hover:opacity-100 transition-opacity",
           selected ? "opacity-100" : "",
@@ -51,17 +56,44 @@ function PhotoCard({ photo, selected, onClick, cellSize }: Props) {
             {filename}
           </span>
         )}
-        {photo.print_count > 0 && (
-          <PrintBadge count={photo.print_count} />
-        )}
+        {photo.print_count > 0 && <PrintBadge count={photo.print_count} />}
       </div>
 
-      {/* Always-visible print badge (top-right) when count > 0 */}
+      {/* Always-visible historical print badge (top-right) */}
       {photo.print_count > 0 && (
-        <div className="absolute top-1 right-1">
+        <div className="absolute top-1 right-1 pointer-events-none">
           <PrintBadge count={photo.print_count} />
         </div>
       )}
+
+      {/* Print-quantity stepper (top-left). Always visible if queued, else on hover. */}
+      <div
+        className={[
+          "absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-black/70 px-0.5 py-0.5",
+          "transition-opacity",
+          printQty > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+        ].join(" ")}
+      >
+        <QtyBtn label="−" onClick={() => onQtyDelta(-1)} disabled={printQty <= 0} />
+        <span className="min-w-[14px] text-center text-[11px] font-semibold text-white tabular-nums">
+          {printQty}
+        </span>
+        <QtyBtn label="+" onClick={() => onQtyDelta(+1)} />
+      </div>
+    </div>
+  );
+}
+
+function QtyBtn({
+  label, onClick, disabled,
+}: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      disabled={disabled}
+      className="w-5 h-5 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/30 disabled:opacity-30 text-white text-sm leading-none font-medium"
+    >
+      {label}
     </button>
   );
 }

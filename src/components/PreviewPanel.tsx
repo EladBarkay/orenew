@@ -6,15 +6,18 @@ type Props = {
   event: MagnetEvent;
   photo: Photo;
   onClose: () => void;
+  /** Bumped when a frame PNG changes on disk, to force preview refetch. */
+  frameNonce: number;
 };
 
-export default function PreviewPanel({ event, photo, onClose }: Props) {
+export default function PreviewPanel({ event, photo, onClose, frameNonce }: Props) {
   const filename = photo.path.split(/[\\/]/).pop() ?? photo.path;
-  const thumb = useThumbnail(photo.path);
+  const thumb = useThumbnail(photo.path, photo.content_hash);
   const framedSrc = useFramedPreview(
     event.id,
     photo.id,
-    event.active_frame_preset_id
+    event.active_frame_preset_id,
+    frameNonce
   );
 
   const displaySrc = framedSrc ?? thumb;

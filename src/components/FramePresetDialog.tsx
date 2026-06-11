@@ -7,15 +7,19 @@ type Props = {
   event: MagnetEvent;
   onCreated: (updatedEvent: MagnetEvent) => void;
   onClose: () => void;
+  /** When provided, the dialog edits this preset instead of creating a new one. */
+  editing?: FramePreset;
 };
 
-export default function FramePresetDialog({ event, onCreated, onClose }: Props) {
-  const [name, setName] = useState("");
-  const [landscapePath, setLandscapePath] = useState("");
-  const [portraitPath, setPortraitPath] = useState("");
-  const [ratioW, setRatioW] = useState(4);
-  const [ratioH, setRatioH] = useState(3);
-  const [cropMethod, setCropMethod] = useState<"center" | "rule_of_thirds">("center");
+export default function FramePresetDialog({ event, onCreated, onClose, editing }: Props) {
+  const [name, setName] = useState(editing?.name ?? "");
+  const [landscapePath, setLandscapePath] = useState(editing?.landscape_frame_path ?? "");
+  const [portraitPath, setPortraitPath] = useState(editing?.portrait_frame_path ?? "");
+  const [ratioW, setRatioW] = useState(editing?.target_ratio_w ?? 4);
+  const [ratioH, setRatioH] = useState(editing?.target_ratio_h ?? 3);
+  const [cropMethod, setCropMethod] = useState<"center" | "rule_of_thirds">(
+    editing?.crop_method ?? "center"
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -36,28 +40,36 @@ export default function FramePresetDialog({ event, onCreated, onClose }: Props) 
 
     setSaving(true);
     setError("");
+    const input = {
+      name: name.trim(),
+      landscape_frame_path: landscapePath,
+      portrait_frame_path: portraitPath,
+      target_ratio_w: ratioW,
+      target_ratio_h: ratioH,
+      crop_method: cropMethod,
+    };
     try {
-      const preset = await invoke<FramePreset>("create_frame_preset", {
-        eventId: event.id,
-        preset: {
-          name: name.trim(),
-          landscape_frame_path: landscapePath,
-          portrait_frame_path: portraitPath,
-          target_ratio_w: ratioW,
-          target_ratio_h: ratioH,
-          crop_method: cropMethod,
-        },
-      });
-
-      // Set as active and persist
-      const updatedEvent: MagnetEvent = {
-        ...event,
-        frame_presets: [...event.frame_presets, preset],
-        active_frame_preset_id: preset.id,
-      };
-      await invoke("save_event", { event: updatedEvent });
-
-      onCreated(updatedEvent);
+      if (editing) {
+        const preset = await invoke<FramePreset>("update_frame_preset", {
+          eventId: event.id, presetId: editing.id, preset: input,
+        });
+        onCreated({
+          ...event,
+          frame_presets: event.frame_presets.map((p) => (p.id === preset.id ? preset : p)),
+        });
+      } else {
+        const preset = await invoke<FramePreset>("create_frame_preset", {
+          eventId: event.id, preset: input,
+        });
+        // Set as active and persist
+        const updatedEvent: MagnetEvent = {
+          ...event,
+          frame_presets: [...event.frame_presets, preset],
+          active_frame_preset_id: preset.id,
+        };
+        await invoke("save_event", { event: updatedEvent });
+        onCreated(updatedEvent);
+      }
     } catch (e) {
       setError(String(e));
       setSaving(false);
@@ -68,7 +80,9 @@ export default function FramePresetDialog({ event, onCreated, onClose }: Props) 
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-sm mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5 space-y-4">
-        <h2 className="text-base font-semibold text-neutral-100">Add frame preset</h2>
+        <h2 className="text-base font-semibold text-neutral-100">
+          {editing ? "Edit frame preset" : "Add frame preset"}
+        </h2>
 
         {/* Name */}
         <Field label="Name">
@@ -152,7 +166,7 @@ export default function FramePresetDialog({ event, onCreated, onClose }: Props) 
             disabled={saving}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
           >
-            {saving ? "Saving…" : "Add frame"}
+            {saving ? "Saving…" : editing ? "Save changes" : "Add frame"}
           </button>
         </div>
       </div>
