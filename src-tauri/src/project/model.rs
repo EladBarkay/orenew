@@ -148,3 +148,62 @@ impl CanvasPreset {
         (self.canvas_height_px - total_margin) / self.rows as u32
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn photo(width: u32, height: u32) -> Photo {
+        Photo {
+            id: Uuid::new_v4(),
+            path: PathBuf::from("x.jpg"),
+            xmp_path: None,
+            width,
+            height,
+            exif_orientation: None,
+            orientation_override: None,
+            crop_override: None,
+            print_count: 0,
+            content_hash: String::new(),
+        }
+    }
+
+    #[test]
+    fn orientation_from_pixels_landscape() {
+        assert_eq!(photo(200, 100).effective_orientation(), Orientation::Landscape);
+    }
+
+    #[test]
+    fn orientation_from_pixels_portrait() {
+        assert_eq!(photo(100, 200).effective_orientation(), Orientation::Portrait);
+    }
+
+    #[test]
+    fn square_is_landscape() {
+        assert_eq!(photo(100, 100).effective_orientation(), Orientation::Landscape);
+    }
+
+    #[test]
+    fn override_wins_over_pixels() {
+        let mut p = photo(200, 100); // would be Landscape
+        p.orientation_override = Some(Orientation::Portrait);
+        assert_eq!(p.effective_orientation(), Orientation::Portrait);
+    }
+
+    #[test]
+    fn slot_dimensions_account_for_margins() {
+        let preset = CanvasPreset {
+            id: Uuid::new_v4(),
+            name: "2-up".into(),
+            canvas_width_px: 2400,
+            canvas_height_px: 1600,
+            photos_per_canvas: 2,
+            dpi: 300,
+            margin_px: 0,
+            cols: 2,
+            rows: 1,
+        };
+        assert_eq!(preset.slot_width(), 1200);
+        assert_eq!(preset.slot_height(), 1600);
+    }
+}

@@ -125,6 +125,27 @@ pub async fn refresh_batch(
     Ok(event)
 }
 
+/// (Re)establish filesystem watches for all of an event's batch folders and
+/// frame-PNG directories. Safe to call repeatedly; call after opening an event
+/// (existing watches are not persisted across restarts).
+#[tauri::command]
+pub async fn sync_watches(event_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
+    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    if let Ok(mut watcher) = state.watcher.lock() {
+        for batch in &event.batches {
+            let _ = watcher.watch(&batch.source_path);
+        }
+        for fp in &event.frame_presets {
+            for p in [&fp.landscape_frame_path, &fp.portrait_frame_path] {
+                if let Some(dir) = p.parent() {
+                    let _ = watcher.watch(dir);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {

@@ -1,19 +1,26 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 use crate::project::model::Event;
 
 /// Manages reading/writing event state in `{app_data}/events/`.
 /// Constructed once at app startup from `app.path().app_data_dir()` and held in Tauri state.
+///
+/// Keeps an in-memory cache so hot paths (`list_photos`, `get_framed_preview`,
+/// export/print) don't re-read and re-parse JSON from disk on every call. The
+/// disk file remains the source of truth and is always written on `save`.
 #[derive(Clone)]
 pub struct EventStore {
     base_dir: PathBuf,
+    cache: Arc<Mutex<HashMap<Uuid, Event>>>,
 }
 
 impl EventStore {
     pub fn new(base_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&base_dir)?;
-        Ok(Self { base_dir })
+        Ok(Self { base_dir, cache: Arc::new(Mutex::new(HashMap::new())) })
     }
 
     fn event_path(&self, id: Uuid) -> PathBuf {
@@ -21,10 +28,15 @@ impl EventStore {
     }
 
     pub fn load(&self, id: Uuid) -> Result<Event> {
+        if let Some(event) = self.cache.lock().unwrap().get(&id).cloned() {
+            return Ok(event);
+        }
         let path = self.event_path(id);
         let data = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        serde_json::from_str(&data).context("deserializing event")
+        let event: Event = serde_json::from_str(&data).context("deserializing event")?;
+        self.cache.lock().unwrap().insert(id, event.clone());
+        Ok(event)
     }
 
     pub fn save(&self, event: &Event) -> Result<()> {
@@ -32,7 +44,9 @@ impl EventStore {
         std::fs::create_dir_all(path.parent().unwrap())?;
         let data = serde_json::to_string_pretty(event).context("serializing event")?;
         std::fs::write(&path, data)
-            .with_context(|| format!("writing {}", path.display()))
+            .with_context(|| format!("writing {}", path.display()))?;
+        self.cache.lock().unwrap().insert(event.id, event.clone());
+        Ok(())
     }
 
     pub fn list_all(&self) -> Result<Vec<Event>> {
@@ -74,6 +88,7 @@ impl EventStore {
     }
 
     pub fn delete(&self, id: Uuid) -> Result<()> {
+        self.cache.lock().unwrap().remove(&id);
         let dir = self.base_dir.join(id.to_string());
         if dir.exists() {
             std::fs::remove_dir_all(&dir)?;
