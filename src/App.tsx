@@ -17,8 +17,13 @@ function batchDisplayPath(batchPath: string, rootPath: string | null): string {
   const norm = (s: string) => s.replace(/\\/g, "/");
   const root = norm(rootPath).replace(/\/$/, "");
   const path = norm(batchPath);
-  if (path.startsWith(root + "/")) return path.slice(root.length + 1) || batchPath;
-  return batchPath;
+  // If path is under root, show: root/relative
+  if (path.startsWith(root + "/")) {
+    const rel = path.slice(root.length + 1);
+    return `${root}/${rel}`;
+  }
+  // Otherwise show absolute path
+  return path;
 }
 
 export default function App() {
@@ -33,9 +38,12 @@ export default function App() {
   const [frameNonce, setFrameNonce] = useState(0);
   // Frame preset currently being edited (opens FramePresetDialog in edit mode).
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
-  // Per-photo print quantities for the current print queue (session-only,
-  // separate from each photo's historical print_count).
-  const [printQueue, setPrintQueue] = useState<Record<string, number>>({});
+   // Per-photo print quantities for the current print queue (session-only,
+   // separate from each photo's historical print_count).
+   const [printQueue, setPrintQueue] = useState<Record<string, number>>({});
+   // Per-photo export quantities for the current export queue (session-only,
+   // separate from each photo's historical export_count).
+   const [exportQueue, setExportQueue] = useState<Record<string, number>>({});
 
   // Load any saved license once on startup.
   useEffect(() => {
@@ -386,31 +394,31 @@ export default function App() {
                         className={`group relative ${draggedBatchId === b.id ? "opacity-40" : ""}`}
                       >
                         <button
-                          onClick={() => { setActiveBatch(b); setSelected(null); }}
-                          onDoubleClick={async () => {
-                            try {
-                              const { openPath } = await import("@tauri-apps/plugin-opener");
-                              await openPath(b.source_path);
-                            } catch {}
-                          }}
-                          className={[
-                            "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors",
-                            b.id === activeBatch?.id
-                              ? "bg-blue-600/20 text-blue-300"
-                              : "text-neutral-300 hover:bg-neutral-700/60",
-                          ].join(" ")}
-                        >
-                          <span className="block truncate">{b.name}</span>
-                          <span
-                            className="block text-[10px] text-neutral-500 truncate"
-                            title={b.source_path}
-                          >
-                            {displayPath}
-                          </span>
-                          <span className="block text-[10px] text-neutral-600">
-                            {b.photos.length} photos
-                          </span>
-                        </button>
+                           onClick={() => { setActiveBatch(b); setSelected(null); }}
+                           onDoubleClick={async () => {
+                             try {
+                               const { openPath } = await import("@tauri-apps/plugin-opener");
+                               await openPath(b.source_path);
+                             } catch {}
+                           }}
+                           className={[
+                             "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors",
+                             b.id === activeBatch?.id
+                               ? "bg-blue-600/20 text-blue-300"
+                               : "text-neutral-300 hover:bg-neutral-700/60",
+                           ].join(" ")}
+                         >
+                           <span className="block truncate">{b.name}</span>
+                           <span
+                             className="block text-[10px] text-neutral-500 truncate"
+                             title={b.source_path}
+                           >
+                             path: {displayPath}
+                           </span>
+                           <span className="block text-[10px] text-neutral-600">
+                             {b.photos.length} photos
+                           </span>
+                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteBatch(b); }}
                           title="Remove batch"
@@ -529,6 +537,13 @@ export default function App() {
               onSelect={setSelected}
               printQueue={printQueue}
               onQtyDelta={adjustQty}
+              exportQueue={exportQueue}
+              onExportQtyDelta={(photoId, delta) => {
+                setExportQueue((prev) => ({
+                  ...prev,
+                  [photoId]: Math.max(0, (prev[photoId] ?? 0) + delta),
+                }));
+              }}
             />
             {selected && (
               <PreviewPanel
@@ -545,14 +560,16 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {modal === "export" && event && activeBatch && (
-        <ExportDialog
-          event={event}
-          batch={activeBatch}
-          onClose={() => setModal(null)}
-          onEventUpdate={updateEvent}
-        />
-      )}
+       {modal === "export" && event && activeBatch && (
+         <ExportDialog
+           event={event}
+           batch={activeBatch}
+           exportQueue={exportQueue}
+           onClose={() => setModal(null)}
+           onEventUpdate={updateEvent}
+           onClearExportQueue={() => setExportQueue({})}
+         />
+       )}
       {modal === "print" && event && (
         <PrintConfirmDialog
           event={event}

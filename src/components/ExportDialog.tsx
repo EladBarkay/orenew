@@ -8,11 +8,13 @@ import CanvasPresetForm from "./CanvasPresetForm";
 type Props = {
   event: MagnetEvent;
   batch: PhotoBatch;
+  exportQueue: Record<string, number>;
   onClose: () => void;
   onEventUpdate: (e: MagnetEvent) => void;
+  onClearExportQueue: () => void;
 };
 
-export default function ExportDialog({ event, batch, onClose, onEventUpdate }: Props) {
+export default function ExportDialog({ event, batch, exportQueue, onClose, onEventUpdate, onClearExportQueue }: Props) {
   const [selectedPresetId, setSelectedPresetId] = useState<string>(
     event.canvas_presets[0]?.id ?? ""
   );
@@ -49,6 +51,7 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
         eventId: event.id,
         batchId: batch.id,
         canvasPresetId: selectedPresetId,
+        exportQuantities: exportQueue,
       });
       // export-complete event is handled by useExportProgress
     } catch (e) {
@@ -59,8 +62,9 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
 
   // Completed state
   if (result) {
+    const totalExported = Object.values(exportQueue).reduce((sum, qty) => sum + qty, 0);
     return (
-      <Modal onClose={() => { clear(); onClose(); }}>
+      <Modal onClose={() => { clear(); onClearExportQueue(); onClose(); }}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{result.errors.length === 0 ? "✓" : "⚠"}</span>
@@ -68,7 +72,7 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
               <p className="font-medium text-neutral-100">
                 {result.errors.length === 0 ? "Export complete" : `Export finished with ${result.errors.length} error(s)`}
               </p>
-              <p className="text-xs text-neutral-400 mt-0.5 break-all">{result.output_dir}</p>
+              <p className="text-xs text-neutral-400 mt-0.5">{totalExported} photos exported to {result.output_dir}</p>
             </div>
           </div>
           {result.errors.length > 0 && (
@@ -88,7 +92,7 @@ export default function ExportDialog({ event, batch, onClose, onEventUpdate }: P
             >
               Open folder
             </button>
-            <button onClick={() => { clear(); onClose(); }}
+            <button onClick={() => { clear(); onClearExportQueue(); onClose(); }}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium">
               Done
             </button>

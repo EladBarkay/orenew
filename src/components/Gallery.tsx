@@ -13,9 +13,11 @@ type Props = {
   onSelect: (photo: Photo) => void;
   printQueue: Record<string, number>;
   onQtyDelta: (photoId: string, delta: number) => void;
+  exportQueue: Record<string, number>;
+  onExportQtyDelta: (photoId: string, delta: number) => void;
 };
 
-export default function Gallery({ photos, selectedId, onSelect, printQueue, onQtyDelta }: Props) {
+export default function Gallery({ photos, selectedId, onSelect, printQueue, onQtyDelta, exportQueue, onExportQtyDelta }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -55,11 +57,13 @@ export default function Gallery({ photos, selectedId, onSelect, printQueue, onQt
             cellSize={CELL}
             printQty={printQueue[photo.id] ?? 0}
             onQtyDelta={(delta) => onQtyDelta(photo.id, delta)}
+            exportQty={exportQueue[photo.id] ?? 0}
+            onExportQtyDelta={(delta) => onExportQtyDelta(photo.id, delta)}
           />
         </div>
       );
     },
-    [photos, selectedId, onSelect, colCount, printQueue, onQtyDelta]
+    [photos, selectedId, onSelect, colCount, printQueue, onQtyDelta, exportQueue, onExportQtyDelta]
   );
 
   if (photos.length === 0) {

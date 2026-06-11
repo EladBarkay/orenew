@@ -84,6 +84,7 @@ pub struct Photo {
     pub orientation_override: Option<Orientation>,
     pub crop_override: Option<CropRect>,
     pub print_count: u32,
+    pub export_count: u32,
     pub content_hash: String,
 }
 

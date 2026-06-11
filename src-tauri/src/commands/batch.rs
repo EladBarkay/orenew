@@ -24,6 +24,7 @@ pub async fn export_batch(
     event_id: Uuid,
     batch_id: Uuid,
     canvas_preset_id: Uuid,
+    export_quantities: HashMap<String, u32>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -50,7 +51,21 @@ pub async fn export_batch(
     let output_dir = output_root.join(&timestamp);
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    let photos = batch.photos.clone();
+    let mut photos = batch.photos.clone();
+    let original_photo_ids: Vec<Uuid> = photos.iter().map(|p| p.id).collect();
+    
+    // Expand photos by export quantities
+    // Convert photo IDs to strings for lookup in export_quantities map
+    let mut expanded_photos = Vec::new();
+    for photo in photos.iter() {
+        let photo_id_str = photo.id.to_string();
+        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(1).max(1);
+        for _ in 0..qty {
+            expanded_photos.push(photo.clone());
+        }
+    }
+    photos = expanded_photos;
+    
     let output_dir_clone = output_dir.clone();
 
     let slot_w = canvas_preset.slot_width();
@@ -69,10 +84,13 @@ pub async fn export_batch(
         .map_err(|e| format!("loading portrait frame: {e}"))?
         .resize_exact(slot_w, slot_h, image::imageops::FilterType::Triangle);
 
+    // Store a reference to the state so we can update export_count after export
+    let store = state.store.clone();
+
     // Background thread — does not block the IPC handler
     std::thread::spawn(move || {
         let chunk_size = canvas_preset.photos_per_canvas as usize;
-        let total_canvases = photos.len().div_ceil(chunk_size);
+        let total_canvases = if photos.is_empty() { 0 } else { photos.len().div_ceil(chunk_size) };
         let mut errors: Vec<String> = Vec::new();
 
         for (canvas_idx, chunk) in photos.chunks(chunk_size).enumerate() {
@@ -113,6 +131,20 @@ pub async fn export_batch(
                 total: total_canvases,
                 current_file: filename,
             });
+        }
+
+        // Increment export_count for all exported photos
+        if let Ok(mut evt) = store.load(event_id) {
+            for batch in &mut evt.batches {
+                for photo in &mut batch.photos {
+                    if original_photo_ids.contains(&photo.id) {
+                        let photo_id_str = photo.id.to_string();
+                        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(1).max(1);
+                        photo.export_count += qty;
+                    }
+                }
+            }
+            let _ = store.save(&evt);
         }
 
         let _ = app.emit("export-complete", ExportComplete {

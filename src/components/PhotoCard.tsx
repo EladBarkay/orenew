@@ -11,9 +11,13 @@ type Props = {
   printQty: number;
   /** Adjust the queued print quantity by `delta` (clamped at 0). */
   onQtyDelta: (delta: number) => void;
+  /** Number queued for the next export run. */
+  exportQty: number;
+  /** Adjust the queued export quantity by `delta` (clamped at 0). */
+  onExportQtyDelta: (delta: number) => void;
 };
 
-function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta }: Props) {
+function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta, exportQty, onExportQtyDelta }: Props) {
   const src = useThumbnail(photo.path, photo.content_hash);
   const filename = photo.path.split(/[\\/]/).pop() ?? photo.path;
 
@@ -59,12 +63,11 @@ function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta }:
         {photo.print_count > 0 && <PrintBadge count={photo.print_count} />}
       </div>
 
-      {/* Always-visible historical print badge (top-right) */}
-      {photo.print_count > 0 && (
-        <div className="absolute top-1 right-1 pointer-events-none">
-          <PrintBadge count={photo.print_count} />
-        </div>
-      )}
+      {/* Always-visible historical badges (top-right) */}
+      <div className="absolute top-1 right-1 flex flex-col items-end gap-1 pointer-events-none">
+        {photo.export_count > 0 && <ExportBadge count={photo.export_count} />}
+        {photo.print_count > 0 && <PrintBadge count={photo.print_count} />}
+      </div>
 
       {/* Print-quantity stepper (top-left). Always visible if queued, else on hover. */}
       <div
@@ -79,6 +82,21 @@ function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta }:
           {printQty}
         </span>
         <QtyBtn label="+" onClick={() => onQtyDelta(+1)} />
+      </div>
+
+      {/* Export-quantity stepper (bottom-left). Always visible if queued, else on hover. */}
+      <div
+        className={[
+          "absolute bottom-1 left-1 flex items-center gap-0.5 rounded-full bg-black/70 px-0.5 py-0.5",
+          "transition-opacity",
+          exportQty > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+        ].join(" ")}
+      >
+        <QtyBtn label="−" onClick={() => onExportQtyDelta(-1)} disabled={exportQty <= 0} />
+        <span className="min-w-[14px] text-center text-[11px] font-semibold text-white tabular-nums">
+          {exportQty}
+        </span>
+        <QtyBtn label="+" onClick={() => onExportQtyDelta(+1)} />
       </div>
     </div>
   );
@@ -102,6 +120,14 @@ function PrintBadge({ count }: { count: number }) {
   return (
     <span className="inline-flex items-center gap-0.5 bg-green-700/90 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
       ×{count}
+    </span>
+  );
+}
+
+function ExportBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 bg-blue-700/90 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
+      ⬇{count}
     </span>
   );
 }
