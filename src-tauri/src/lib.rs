@@ -6,12 +6,14 @@ mod canvas;
 mod watcher;
 mod license;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use project::persistence::EventStore;
 use preview::thumbnail::ThumbnailCache;
 use watcher::fs_watcher::FsWatcher;
 use license::validator::{LicenseInfo, Tier};
+use uuid::Uuid;
 
 pub struct AppState {
     pub store: EventStore,
@@ -20,6 +22,9 @@ pub struct AppState {
     pub watcher: Mutex<FsWatcher>,
     /// Currently active license, if any. `None` => Free tier.
     pub license: Mutex<Option<LicenseInfo>>,
+    /// Framed preview cache keyed by (photo_id, preset_id).
+    /// Invalidated on orientation/crop overrides and frame preset changes.
+    pub preview_cache: Arc<Mutex<HashMap<(Uuid, Uuid), Vec<u8>>>>,
 }
 
 impl AppState {
@@ -77,6 +82,7 @@ pub fn run() {
                 app_data_dir: data_dir,
                 watcher: Mutex::new(fs_watcher),
                 license: Mutex::new(license),
+                preview_cache: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -91,6 +97,7 @@ pub fn run() {
             commands::project::sync_watches,
             commands::gallery::get_thumbnail,
             commands::gallery::get_framed_preview,
+            commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,
             commands::gallery::set_crop_override,
             commands::batch::export_batch,

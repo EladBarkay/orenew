@@ -1,6 +1,6 @@
 import { useThumbnail } from "../hooks/useThumbnail";
 import { useFramedPreview } from "../hooks/useFramedPreview";
-import { MagnetEvent, Photo } from "../types";
+import { MagnetEvent, Orientation, Photo } from "../types";
 import { basename } from "../lib/paths";
 
 type Props = {
@@ -9,9 +9,10 @@ type Props = {
   onClose: () => void;
   /** Bumped when a frame PNG changes on disk, to force preview refetch. */
   frameNonce: number;
+  onOrientationOverride: (photoId: string, orientation: Orientation) => void;
 };
 
-export default function PreviewPanel({ event, photo, onClose, frameNonce }: Props) {
+export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride }: Props) {
   const filename = basename(photo.path);
   const thumb = useThumbnail(photo.path, photo.content_hash);
   const framedSrc = useFramedPreview(
@@ -22,9 +23,9 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce }: Prop
   );
 
   const displaySrc = framedSrc ?? thumb;
-  // Orientation comes from pixel dimensions (plus any user override) to match the
-  // export pipeline, which ignores EXIF — see Rust `detect_orientation`.
-  const orientation = photo.orientation_override ?? inferOrientation(photo);
+  const naturalOrientation = inferOrientation(photo);
+  // Effective orientation shown and used for the toggle.
+  const orientation = photo.orientation_override ?? naturalOrientation;
 
   return (
     <aside className="w-72 flex flex-col bg-neutral-800 border-l border-neutral-700 overflow-hidden">
@@ -54,10 +55,29 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce }: Prop
         )}
       </div>
 
-      {/* Metadata */}
+      {/* Metadata + controls */}
       <div className="px-3 py-3 border-t border-neutral-700 space-y-2 text-xs text-neutral-400">
         <Row label="Dimensions" value={`${photo.width} × ${photo.height}`} />
-        <Row label="Orientation" value={capitalize(orientation)} />
+
+        {/* Orientation override */}
+        <div className="flex items-center justify-between">
+          <span>Orientation{photo.orientation_override ? " (override)" : ""}</span>
+          <div className="flex gap-1">
+            <OrientBtn
+              label="L"
+              title="Landscape"
+              active={orientation === "landscape"}
+              onClick={() => onOrientationOverride(photo.id, "landscape")}
+            />
+            <OrientBtn
+              label="P"
+              title="Portrait"
+              active={orientation === "portrait"}
+              onClick={() => onOrientationOverride(photo.id, "portrait")}
+            />
+          </div>
+        </div>
+
         {framedSrc && (
           <Row label="Frame" value={activeFrameName(event) ?? "—"} />
         )}
@@ -78,6 +98,25 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce }: Prop
   );
 }
 
+function OrientBtn({
+  label, title, active, onClick,
+}: { label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={[
+        "w-6 h-6 text-[10px] font-semibold rounded transition-colors",
+        active
+          ? "bg-blue-600 text-white"
+          : "bg-neutral-700 hover:bg-neutral-600 text-neutral-400",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -87,12 +126,8 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function inferOrientation(photo: Photo) {
+function inferOrientation(photo: Photo): Orientation {
   return photo.width >= photo.height ? "landscape" : "portrait";
-}
-
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function activeFrameName(event: MagnetEvent) {

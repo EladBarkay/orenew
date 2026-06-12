@@ -61,6 +61,7 @@ pub async fn update_frame_preset(
     preset.apply(existing);
     let updated = existing.clone();
     state.store.save(&event).map_err(|e| e.to_string())?;
+    state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
     Ok(updated)
 }
 
@@ -75,5 +76,7 @@ pub async fn delete_frame_preset(
     if event.active_frame_preset_id == Some(preset_id) {
         event.active_frame_preset_id = event.frame_presets.first().map(|p| p.id);
     }
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+    Ok(())
 }

@@ -25,8 +25,9 @@ export default function ExportDialog({ event, batch, exportQueue, onClose, onEve
   const { progress, result, clear } = useExportProgress();
 
   const selectedPreset = event.canvas_presets.find((p) => p.id === selectedPresetId);
-  const canvasCount = selectedPreset
-    ? Math.ceil(batch.photos.length / selectedPreset.photos_per_canvas)
+  const totalExportPhotos = Object.values(exportQueue).reduce((sum, qty) => sum + qty, 0);
+  const canvasCount = selectedPreset && totalExportPhotos > 0
+    ? Math.ceil(totalExportPhotos / selectedPreset.photos_per_canvas)
     : 0;
 
   async function pickOutputFolder() {
@@ -122,7 +123,16 @@ export default function ExportDialog({ event, batch, exportQueue, onClose, onEve
         <div className="text-sm text-neutral-400">
           <span className="font-medium text-neutral-200">{batch.name}</span>
           {" · "}{batch.photos.length} photos
+          {totalExportPhotos > 0 && (
+            <span className="ml-2 text-neutral-500">({totalExportPhotos} queued)</span>
+          )}
         </div>
+
+        {totalExportPhotos === 0 && (
+          <p className="text-xs text-amber-400">
+            No photos queued — use the export steppers on gallery cards to set quantities.
+          </p>
+        )}
 
         {/* Canvas preset */}
         <div className="space-y-2">
@@ -201,7 +211,7 @@ export default function ExportDialog({ event, batch, exportQueue, onClose, onEve
           </button>
           <button
             onClick={startExport}
-            disabled={!selectedPresetId || !event.output_folder || exporting}
+            disabled={!selectedPresetId || !event.output_folder || exporting || totalExportPhotos === 0}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium"
           >
             Export {canvasCount > 0 ? `${canvasCount} canvas${canvasCount !== 1 ? "es" : ""}` : ""}

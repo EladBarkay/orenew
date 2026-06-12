@@ -11,7 +11,7 @@ import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
-import { MagnetEvent, Photo, PhotoBatch, FramePreset, LicenseInfo } from "./types";
+import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, LicenseInfo } from "./types";
 
 type Modal = "export" | "print" | "addFrame" | "settings" | "canvasPresets" | null;
 
@@ -193,6 +193,40 @@ export default function App() {
     });
   }
 
+  // Set all photos in the active batch to the same print quantity.
+  function handleSetAllPrintQty(qty: number) {
+    if (!activeBatch) return;
+    if (qty <= 0) {
+      setPrintQueue({});
+      return;
+    }
+    const q: Record<string, number> = {};
+    for (const p of activeBatch.photos) q[p.id] = qty;
+    setPrintQueue(q);
+  }
+
+  // Apply an orientation override to a single photo (IPC + optimistic update).
+  async function handleOrientationOverride(photoId: string, orientation: Orientation) {
+    if (!event) return;
+    try {
+      await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+      const updatePhoto = (p: Photo): Photo =>
+        p.id === photoId ? { ...p, orientation_override: orientation } : p;
+      const updatedEvent = {
+        ...event,
+        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
+      };
+      setEvent(updatedEvent);
+      if (activeBatch) {
+        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
+        if (refreshedBatch) setActiveBatch(refreshedBatch);
+      }
+      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
   // After a successful print: optimistically bump print_count for queued photos
   // (the backend has already persisted these increments) and clear the queue.
   function handlePrinted() {
@@ -222,6 +256,7 @@ export default function App() {
         onPrint={() => setModal("print")}
         onExport={() => setModal("export")}
         onSettings={() => setModal("settings")}
+        onSetAllPrintQty={handleSetAllPrintQty}
       />
 
       {/* Body */}
@@ -233,7 +268,7 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); }}
+            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPrintQueue({}); setExportQueue({}); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             onAddFrame={() => setModal("addFrame")}
@@ -273,6 +308,7 @@ export default function App() {
                 photo={selected}
                 onClose={() => setSelected(null)}
                 frameNonce={frameNonce}
+                onOrientationOverride={handleOrientationOverride}
               />
             )}
           </div>

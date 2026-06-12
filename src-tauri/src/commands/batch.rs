@@ -48,12 +48,12 @@ where
     }
 }
 
-/// Expand a photo list by per-photo quantity: a photo with qty=3 appears 3 times
-/// (qty floored at 1 so every selected photo is produced at least once).
+/// Expand a photo list by per-photo quantity: a photo with qty=3 appears 3 times,
+/// qty=0 skips it entirely.
 fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Photo> {
     photos
         .iter()
-        .flat_map(|p| std::iter::repeat_n(p.clone(), qty(p).max(1) as usize))
+        .flat_map(|p| std::iter::repeat_n(p.clone(), qty(p) as usize))
         .collect()
 }
 
@@ -91,8 +91,12 @@ pub async fn export_batch(
 
     let original_photo_ids: Vec<Uuid> = batch.photos.iter().map(|p| p.id).collect();
     let photos = expand_by_quantity(&batch.photos, |p| {
-        export_quantities.get(&p.id.to_string()).copied().unwrap_or(1)
+        export_quantities.get(&p.id.to_string()).copied().unwrap_or(0)
     });
+
+    if photos.is_empty() {
+        return Err("No photos queued for export — use the export quantity steppers on photos in the gallery".into());
+    }
 
     let output_dir_clone = output_dir.clone();
 
@@ -169,8 +173,10 @@ pub async fn export_batch(
                 for photo in &mut batch.photos {
                     if original_photo_ids.contains(&photo.id) {
                         let photo_id_str = photo.id.to_string();
-                        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(1).max(1);
-                        photo.export_count += qty;
+                        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(0);
+                        if qty > 0 {
+                            photo.export_count += qty;
+                        }
                     }
                 }
             }

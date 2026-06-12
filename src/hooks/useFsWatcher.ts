@@ -38,13 +38,14 @@ export function useFsWatcher(
       if (!cur) return;
       const changedPath = norm(e.payload);
 
-      // Frame PNG change → refresh previews.
-      const isFrame = cur.frame_presets.some(
+      // Frame PNG change → clear Rust preview cache for that preset + refresh UI.
+      const changedPreset = cur.frame_presets.find(
         (fp) =>
           norm(fp.landscape_frame_path) === changedPath ||
           norm(fp.portrait_frame_path) === changedPath
       );
-      if (isFrame) {
+      if (changedPreset) {
+        invoke("clear_framed_preview_cache", { presetId: changedPreset.id }).catch(() => {});
         handlersRef.current.onFrameChanged();
         return;
       }

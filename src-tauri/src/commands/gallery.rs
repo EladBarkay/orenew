@@ -19,6 +19,10 @@ pub async fn get_framed_preview(
     preset_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
+    // Check in-memory cache first.
+    if let Some(cached) = state.preview_cache.lock().unwrap().get(&(photo_id, preset_id)).cloned() {
+        return Ok(cached);
+    }
     let event = state.store.load(event_id).map_err(|e| e.to_string())?;
     let photo = find_photo(&event, photo_id)?;
     let preset = event
@@ -26,8 +30,25 @@ pub async fn get_framed_preview(
         .iter()
         .find(|p| p.id == preset_id)
         .ok_or_else(|| format!("preset {preset_id} not found"))?;
-    crate::preview::framed_preview::generate_framed_preview(photo, preset)
-        .map_err(|e| e.to_string())
+    let bytes = crate::preview::framed_preview::generate_framed_preview(photo, preset)
+        .map_err(|e| e.to_string())?;
+    state.preview_cache.lock().unwrap().insert((photo_id, preset_id), bytes.clone());
+    Ok(bytes)
+}
+
+/// Clear cached previews for a specific frame preset, or all if `preset_id` is None.
+/// Called by the frontend when a frame PNG changes on disk.
+#[tauri::command]
+pub async fn clear_framed_preview_cache(
+    preset_id: Option<Uuid>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut cache = state.preview_cache.lock().unwrap();
+    match preset_id {
+        Some(pid) => cache.retain(|(_, fpid), _| *fpid != pid),
+        None => cache.clear(),
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -39,7 +60,10 @@ pub async fn set_orientation_override(
 ) -> Result<(), String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
     find_photo_mut(&mut event, photo_id)?.orientation_override = Some(orientation);
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    // Invalidate cached previews for this photo across all presets.
+    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -51,7 +75,10 @@ pub async fn set_crop_override(
 ) -> Result<(), String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
     find_photo_mut(&mut event, photo_id)?.crop_override = Some(crop);
-    state.store.save(&event).map_err(|e| e.to_string())
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    // Invalidate cached previews for this photo across all presets.
+    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    Ok(())
 }
 
 fn find_photo(

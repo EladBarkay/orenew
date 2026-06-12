@@ -13,8 +13,7 @@ export function batchDisplayPath(batchPath: string, rootPath: string | null): st
   const root = norm(rootPath).replace(/\/$/, "");
   const path = norm(batchPath);
   if (path.startsWith(root + "/")) {
-    const rel = path.slice(root.length + 1);
-    return `${root}/${rel}`;
+    return path.slice(root.length + 1);
   }
   return path;
 }

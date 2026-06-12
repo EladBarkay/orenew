@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { LicenseInfo, MagnetEvent, PhotoBatch } from "../types";
 import { ExportIcon, PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 
@@ -14,13 +15,25 @@ type Props = {
   onPrint: () => void;
   onExport: () => void;
   onSettings: () => void;
+  onSetAllPrintQty: (qty: number) => void;
 };
 
 export default function Toolbar({
   event, license, status, totalPhotos, activeBatch, queuedPrints, hasFramePreset,
-  onOpenEvent, onDeleteEvent, onPrint, onExport, onSettings,
+  onOpenEvent, onDeleteEvent, onPrint, onExport, onSettings, onSetAllPrintQty,
 }: Props) {
   const isPro = license?.tier === "pro";
+  const [allQty, setAllQty] = useState(1);
+
+  // Reset the stepper whenever the active batch changes.
+  useEffect(() => { setAllQty(1); }, [activeBatch?.id]);
+
+  function changeAllQty(delta: number) {
+    const next = Math.max(0, allQty + delta);
+    setAllQty(next);
+    onSetAllPrintQty(next);
+  }
+
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-800 border-b border-neutral-700 shrink-0">
       <span className="font-bold text-base tracking-tight text-white">MagNet</span>
@@ -43,7 +56,21 @@ export default function Toolbar({
             <TrashIcon />
           </button>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            {/* Batch-wide print qty: set all photos in the current batch at once */}
+            {activeBatch && activeBatch.photos.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-neutral-500">All:</span>
+                <div className="flex items-center gap-0.5 rounded-full bg-neutral-700 px-0.5 py-0.5">
+                  <QtyBtn label="−" onClick={() => changeAllQty(-1)} disabled={allQty <= 0} />
+                  <span className="min-w-[18px] text-center text-xs font-semibold text-neutral-200 tabular-nums">
+                    {allQty}
+                  </span>
+                  <QtyBtn label="+" onClick={() => changeAllQty(+1)} />
+                </div>
+              </div>
+            )}
+
             <button
               onClick={onPrint}
               disabled={!activeBatch || queuedPrints === 0 || !hasFramePreset}
@@ -99,5 +126,17 @@ export default function Toolbar({
         </span>
       </button>
     </header>
+  );
+}
+
+function QtyBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="w-5 h-5 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 text-neutral-200 text-sm leading-none font-medium"
+    >
+      {label}
+    </button>
   );
 }
