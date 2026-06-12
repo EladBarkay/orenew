@@ -34,7 +34,7 @@ kamadak-exif = "0.5"
 quick-xml = { version = "0.36", features = ["serialize"] }
 
 # Async / parallelism
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 rayon = "1"
 
 # File watching
@@ -54,7 +54,7 @@ log = "0.4"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = true

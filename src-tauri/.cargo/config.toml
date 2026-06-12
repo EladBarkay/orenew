@@ -1,0 +1,13 @@
+# Use LLVM's lld-link instead of MSVC link.exe for significantly faster linking.
+# Install: `winget install LLVM.LLVM`  or VS Installer → "C++ Clang tools for Windows"
+# If lld-link is not on PATH this entry is silently ignored and link.exe is used as fallback.
+#
+# /DEBUG:FASTLINK produces a partial PDB (references object files instead of copying)
+# which further reduces link time for dev/debug builds.
+[target.x86_64-pc-windows-msvc]
+linker = "lld-link"
+rustflags = ["-Clink-arg=/DEBUG:FASTLINK"]
+
+[target.aarch64-pc-windows-msvc]
+linker = "lld-link"
+rustflags = ["-Clink-arg=/DEBUG:FASTLINK"]
