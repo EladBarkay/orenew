@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, MagnetEvent } from "../types";
 import CanvasPresetForm from "./CanvasPresetForm";
+import { Modal } from "./ui";
 
 type Props = {
   event: MagnetEvent;
@@ -31,7 +32,7 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} size="lg">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-neutral-100">Canvas presets</h2>
@@ -98,23 +99,10 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
               onEventUpdate(updatedEvent);
               setMode({ kind: "list" });
             }}
-            onCancel={() =>
-              setMode(event.canvas_presets.length === 0 ? { kind: "list" } : { kind: "list" })
-            }
+            onCancel={() => setMode({ kind: "list" })}
           />
         )}
       </div>
     </Modal>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5">
-        {children}
-      </div>
-    </div>
   );
 }

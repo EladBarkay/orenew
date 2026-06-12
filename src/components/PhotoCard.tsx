@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { Photo } from "../types";
+import { basename } from "../lib/paths";
 
 type Props = {
   photo: Photo;
@@ -19,7 +20,7 @@ type Props = {
 
 function PhotoCard({ photo, selected, onClick, cellSize, printQty, onQtyDelta, exportQty, onExportQtyDelta }: Props) {
   const src = useThumbnail(photo.path, photo.content_hash);
-  const filename = photo.path.split(/[\\/]/).pop() ?? photo.path;
+  const filename = basename(photo.path);
 
   return (
     <div

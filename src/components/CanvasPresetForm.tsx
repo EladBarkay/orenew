@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, MagnetEvent } from "../types";
+import { Field, NumInput } from "./ui";
 
 type Props = {
   event: MagnetEvent;
@@ -125,24 +126,5 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
         </button>
       </div>
     </div>
-  );
-}
-
-function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: number }) {
-  return (
-    <div className={span === 2 ? "col-span-2" : ""}>
-      <label className="block text-neutral-500 mb-0.5">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function NumInput({ value, onChange, min, max }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
-  return (
-    <input
-      type="number" value={value} min={min} max={max}
-      onChange={e => onChange(Number(e.target.value))}
-      className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    />
   );
 }

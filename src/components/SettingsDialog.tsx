@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LicenseInfo } from "../types";
+import { Modal } from "./ui";
 
 type Props = {
   license: LicenseInfo | null;
@@ -135,16 +136,5 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
         </div>
       </div>
     </Modal>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5">
-        {children}
-      </div>
-    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useThumbnail } from "../hooks/useThumbnail";
 import { useFramedPreview } from "../hooks/useFramedPreview";
 import { MagnetEvent, Photo } from "../types";
+import { basename } from "../lib/paths";
 
 type Props = {
   event: MagnetEvent;
@@ -11,7 +12,7 @@ type Props = {
 };
 
 export default function PreviewPanel({ event, photo, onClose, frameNonce }: Props) {
-  const filename = photo.path.split(/[\\/]/).pop() ?? photo.path;
+  const filename = basename(photo.path);
   const thumb = useThumbnail(photo.path, photo.content_hash);
   const framedSrc = useFramedPreview(
     event.id,
@@ -21,7 +22,9 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce }: Prop
   );
 
   const displaySrc = framedSrc ?? thumb;
-  const orientation = photo.orientation_override ?? photo.exif_orientation ?? inferOrientation(photo);
+  // Orientation comes from pixel dimensions (plus any user override) to match the
+  // export pipeline, which ignores EXIF — see Rust `detect_orientation`.
+  const orientation = photo.orientation_override ?? inferOrientation(photo);
 
   return (
     <aside className="w-72 flex flex-col bg-neutral-800 border-l border-neutral-700 overflow-hidden">

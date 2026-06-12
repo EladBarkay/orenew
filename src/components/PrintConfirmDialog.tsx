@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MagnetEvent } from "../types";
 import CanvasPresetForm from "./CanvasPresetForm";
+import { Modal, Field, Chip } from "./ui";
 
 type Props = {
   event: MagnetEvent;
@@ -164,40 +165,3 @@ export default function PrintConfirmDialog({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-xs font-medium text-neutral-400 uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function Chip({
-  label, active, onClick,
-}: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "px-2.5 py-1 text-xs rounded transition-colors",
-        active ? "bg-blue-600 text-white" : "bg-neutral-700 hover:bg-neutral-600 text-neutral-300",
-      ].join(" ")}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5">
-        {children}
-      </div>
-    </div>
-  );
-}

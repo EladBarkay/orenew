@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { FramePreset, MagnetEvent } from "../types";
+import { Modal, Field, PathPicker } from "./ui";
 
 type Props = {
   event: MagnetEvent;
@@ -77,9 +78,8 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5 space-y-4">
+    <Modal onClose={onClose} size="sm">
+      <div className="space-y-4">
         <h2 className="text-base font-semibold text-neutral-100">
           {editing ? "Edit frame preset" : "Add frame preset"}
         </h2>
@@ -170,37 +170,6 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-xs text-neutral-400">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function PathPicker({
-  path, placeholder, onPick,
-}: {
-  path: string; placeholder: string; onPick: () => void;
-}) {
-  return (
-    <div className="flex gap-2">
-      <div className="flex-1 min-w-0 bg-neutral-800 rounded px-3 py-1.5 text-xs text-neutral-400 truncate">
-        {path ? path.split(/[\\/]/).pop() : (
-          <span className="text-neutral-600">{placeholder}</span>
-        )}
-      </div>
-      <button
-        onClick={onPick}
-        className="shrink-0 px-2.5 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
-      >
-        {path ? "Change" : "Pick PNG"}
-      </button>
-    </div>
+    </Modal>
   );
 }

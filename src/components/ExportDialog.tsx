@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CanvasPreset, MagnetEvent, PhotoBatch } from "../types";
+import { MagnetEvent, PhotoBatch } from "../types";
 import { ExportProgress, useExportProgress } from "../hooks/useExportProgress";
 import CanvasPresetForm from "./CanvasPresetForm";
+import { Modal, PresetOption } from "./ui";
 
 type Props = {
   event: MagnetEvent;
@@ -232,34 +233,3 @@ function ExportProgressView({ progress }: { progress: ExportProgress }) {
   );
 }
 
-function PresetOption({ preset, selected, onSelect }: {
-  preset: CanvasPreset; selected: boolean; onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className={[
-        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
-        selected
-          ? "bg-blue-600/20 ring-1 ring-blue-500 text-neutral-100"
-          : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300",
-      ].join(" ")}
-    >
-      <span className="font-medium">{preset.name}</span>
-      <span className="ml-2 text-xs text-neutral-500">
-        {preset.canvas_width_px}×{preset.canvas_height_px} · {preset.photos_per_canvas}-up · {preset.dpi} DPI
-      </span>
-    </button>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5">
-        {children}
-      </div>
-    </div>
-  );
-}
