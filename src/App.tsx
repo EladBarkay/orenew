@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
@@ -26,6 +26,9 @@ export default function App() {
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
+  const [cellSize, setCellSize] = useState(168);
+  const [previewWidth, setPreviewWidth] = useState(288);
+  const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
     invoke<LicenseInfo | null>("get_license_info")
@@ -166,6 +169,30 @@ export default function App() {
   const photos = activeBatch?.photos ?? [];
   const queuedTotal = Object.values(photoQueue).reduce((s, q) => s + q, 0);
 
+  // Derive uniform qty from queue — 0 if empty or mixed values.
+  const allQty = photos.length > 0 && photos.every(
+    (p) => (photoQueue[p.id] ?? 0) === (photoQueue[photos[0].id] ?? 0)
+  ) ? (photoQueue[photos[0].id] ?? 0) : 0;
+
+  // Keyboard navigation through photos when preview is open.
+  useEffect(() => {
+    if (!selected) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const idx = photos.findIndex((p) => p.id === selected.id);
+        if (idx < 0) return;
+        const next = e.key === "ArrowRight"
+          ? Math.min(photos.length - 1, idx + 1)
+          : Math.max(0, idx - 1);
+        setSelected(photos[next]);
+      }
+      if (e.key === "Escape") setSelected(null);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selected, photos]);
+
   function adjustQty(photoId: string, delta: number) {
     setPhotoQueue((prev) => {
       const next = Math.max(0, (prev[photoId] ?? 0) + delta);
@@ -226,6 +253,23 @@ export default function App() {
     setPhotoQueue({});
   }
 
+  function onDividerMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    previewDragRef.current = { startX: e.clientX, startWidth: previewWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!previewDragRef.current) return;
+      const delta = previewDragRef.current.startX - ev.clientX;
+      setPreviewWidth(Math.max(240, Math.min(640, previewDragRef.current.startWidth + delta)));
+    };
+    const onUp = () => {
+      previewDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   return (
     <div className="flex flex-col h-screen bg-neutral-900 text-neutral-100 select-none">
       <Toolbar
@@ -235,11 +279,14 @@ export default function App() {
         totalPhotos={totalPhotos}
         activeBatch={activeBatch}
         queuedTotal={queuedTotal}
+        allQty={allQty}
+        cellSize={cellSize}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
         onSetAllQty={handleSetAllQty}
+        onCellSizeChange={setCellSize}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -274,15 +321,23 @@ export default function App() {
               onSelect={setSelected}
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
+              cellSize={cellSize}
             />
             {selected && (
-              <PreviewPanel
-                event={event}
-                photo={selected}
-                onClose={() => setSelected(null)}
-                frameNonce={frameNonce}
-                onOrientationOverride={handleOrientationOverride}
-              />
+              <>
+                <div
+                  onMouseDown={onDividerMouseDown}
+                  className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
+                />
+                <PreviewPanel
+                  event={event}
+                  photo={selected}
+                  onClose={() => setSelected(null)}
+                  frameNonce={frameNonce}
+                  onOrientationOverride={handleOrientationOverride}
+                  width={previewWidth}
+                />
+              </>
             )}
           </div>
         ) : (
