@@ -3,9 +3,7 @@ import { FixedSizeGrid, GridChildComponentProps } from "react-window";
 import PhotoCard from "./PhotoCard";
 import { Photo } from "../types";
 
-const CELL = 168;
 const GAP = 6;
-const CELL_STRIDE = CELL + GAP;
 
 type Props = {
   photos: Photo[];
@@ -13,11 +11,13 @@ type Props = {
   onSelect: (photo: Photo) => void;
   photoQueue: Record<string, number>;
   onQtyDelta: (photoId: string, delta: number) => void;
+  cellSize?: number;
 };
 
-export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQtyDelta }: Props) {
+export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQtyDelta, cellSize = 168 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const cellStride = cellSize + GAP;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -30,7 +30,7 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
     return () => ro.disconnect();
   }, []);
 
-  const colCount = Math.max(1, Math.floor((size.width + GAP) / CELL_STRIDE));
+  const colCount = Math.max(1, Math.floor((size.width + GAP) / cellStride));
   const rowCount = Math.ceil(photos.length / colCount);
 
   const Cell = useCallback(
@@ -44,22 +44,22 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
             ...style,
             left: (style.left as number) + GAP,
             top: (style.top as number) + GAP,
-            width: CELL,
-            height: CELL,
+            width: cellSize,
+            height: cellSize,
           }}
         >
           <PhotoCard
             photo={photo}
             selected={photo.id === selectedId}
             onClick={() => onSelect(photo)}
-            cellSize={CELL}
+            cellSize={cellSize}
             qty={photoQueue[photo.id] ?? 0}
             onQtyDelta={(delta) => onQtyDelta(photo.id, delta)}
           />
         </div>
       );
     },
-    [photos, selectedId, onSelect, colCount, photoQueue, onQtyDelta]
+    [photos, selectedId, onSelect, colCount, photoQueue, onQtyDelta, cellSize]
   );
 
   if (photos.length === 0) {
@@ -78,9 +78,9 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
       {size.width > 0 && (
         <FixedSizeGrid
           columnCount={colCount}
-          columnWidth={CELL_STRIDE}
+          columnWidth={cellStride}
           rowCount={rowCount}
-          rowHeight={CELL_STRIDE}
+          rowHeight={cellStride}
           width={size.width}
           height={size.height}
           overscanRowCount={3}
