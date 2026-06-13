@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { useFramedPreview } from "../hooks/useFramedPreview";
 import { MagnetEvent, Orientation, Photo } from "../types";
@@ -10,15 +11,25 @@ type Props = {
   /** Bumped when a frame PNG changes on disk, to force preview refetch. */
   frameNonce: number;
   onOrientationOverride: (photoId: string, orientation: Orientation) => void;
+  width?: number;
 };
 
-export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride }: Props) {
+export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride, width }: Props) {
   const filename = basename(photo.path);
   const thumb = useThumbnail(photo.path, photo.content_hash);
+  const [previewFrameId, setPreviewFrameId] = useState<string | null>(
+    event.active_frame_preset_id
+  );
+
+  // Sync when the event's active frame changes (e.g. user adds/removes a preset).
+  useEffect(() => {
+    setPreviewFrameId(event.active_frame_preset_id);
+  }, [event.active_frame_preset_id]);
+
   const framedSrc = useFramedPreview(
     event.id,
     photo.id,
-    event.active_frame_preset_id,
+    previewFrameId,
     frameNonce
   );
 
@@ -28,7 +39,10 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
   const orientation = photo.orientation_override ?? naturalOrientation;
 
   return (
-    <aside className="w-72 flex flex-col bg-neutral-800 border-l border-neutral-700 overflow-hidden">
+    <aside
+      style={{ width: width ?? 288 }}
+      className="flex flex-col bg-neutral-800 border-l border-neutral-700 overflow-hidden shrink-0"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
         <span className="text-xs font-medium text-neutral-300 truncate">{filename}</span>
@@ -78,8 +92,20 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
           </div>
         </div>
 
-        {framedSrc && (
-          <Row label="Frame" value={activeFrameName(event) ?? "—"} />
+        {event.frame_presets.length > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <span>Frame</span>
+            <select
+              value={previewFrameId ?? ""}
+              onChange={(e) => setPreviewFrameId(e.target.value || null)}
+              className="text-xs bg-neutral-700 text-neutral-200 rounded px-1.5 py-0.5 border border-neutral-600 max-w-[140px] truncate"
+            >
+              <option value="">None</option>
+              {event.frame_presets.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
         )}
         <div className="flex items-center justify-between">
           <span>Print count</span>
@@ -130,7 +156,3 @@ function inferOrientation(photo: Photo): Orientation {
   return photo.width >= photo.height ? "landscape" : "portrait";
 }
 
-function activeFrameName(event: MagnetEvent) {
-  if (!event.active_frame_preset_id) return null;
-  return event.frame_presets.find((p) => p.id === event.active_frame_preset_id)?.name ?? null;
-}
