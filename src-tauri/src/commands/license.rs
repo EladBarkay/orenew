@@ -1,46 +1,69 @@
 use tauri::State;
-use crate::license::validator::{LicenseInfo, validate_key};
+use crate::license::{client, validator::{LicenseInfo, save_cached}};
 use crate::AppState;
 
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Step 1 — validate email + key, send OTP to the user's email.
+/// Returns an opaque `challenge_id` to pass to `activate_confirm`.
 #[tauri::command]
-pub async fn validate_license(
+pub async fn activate_init(
+    email: String,
     key: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    client::activate_init(&key, &email, &state.device_id, APP_VERSION)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Step 2 — verify the OTP. On success, persists the license and upgrades the
+/// in-memory tier immediately.
+#[tauri::command]
+pub async fn activate_confirm(
+    challenge_id: String,
+    otp: String,
     email: String,
     state: State<'_, AppState>,
 ) -> Result<LicenseInfo, String> {
-    let info = validate_key(&key, &email).map_err(|e| e.to_string())?;
-    // Persist validated license
+    let info = client::activate_confirm(&challenge_id, &otp, &state.device_id, &email)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let path = state.app_data_dir.join("license.json");
-    let data = serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())?;
-    // Update in-memory tier so subsequent exports/prints reflect it immediately
+    save_cached(&path, &info).map_err(|e| e.to_string())?;
+
     if let Ok(mut guard) = state.license.lock() {
         *guard = Some(info.clone());
     }
     Ok(info)
 }
 
+/// Returns the currently cached license info (no network call).
 #[tauri::command]
-pub async fn get_license_info(state: State<'_, AppState>) -> Result<Option<LicenseInfo>, String> {
-    let path = state.app_data_dir.join("license.json");
-    if !path.exists() {
-        return Ok(None);
-    }
-    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let info: LicenseInfo = serde_json::from_str(&data).map_err(|e| e.to_string())?;
-    // Re-check expiry
-    if info.expiry < chrono::Local::now().date_naive() {
-        return Ok(None);
-    }
-    Ok(Some(info))
+pub async fn get_license_info(
+    state: State<'_, AppState>,
+) -> Result<Option<LicenseInfo>, String> {
+    Ok(state.license.lock().ok().and_then(|g| g.clone()))
 }
 
+/// Deactivate this device (frees a seat) and remove the local license cache.
 #[tauri::command]
 pub async fn clear_license(state: State<'_, AppState>) -> Result<(), String> {
-    let path = state.app_data_dir.join("license.json");
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    let token_and_device = state.license.lock().ok().and_then(|g| {
+        g.as_ref().map(|l| (l.token.clone(), l.device_id.clone()))
+    });
+
+    // Fire-and-forget deactivation call — don't block on network failure.
+    if let Some((token, device_id)) = token_and_device {
+        tokio::spawn(async move {
+            client::deactivate(&device_id, &token).await;
+        });
     }
+
+    let path = state.app_data_dir.join("license.json");
+    let _ = std::fs::remove_file(&path);
+
     if let Ok(mut guard) = state.license.lock() {
         *guard = None;
     }
