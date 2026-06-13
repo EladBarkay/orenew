@@ -1,5 +1,5 @@
 import { FramePreset, MagnetEvent, PhotoBatch } from "../types";
-import { batchDisplayPath } from "../lib/paths";
+import { batchDisplayPath, parentDir } from "../lib/paths";
 import { EditIcon, TrashIcon } from "./icons";
 
 type Props = {
@@ -34,7 +34,7 @@ export default function Sidebar({
           </p>
         ) : (
           event.batches.map((b) => {
-            const displayPath = batchDisplayPath(b.source_path, event.root_path);
+            const displayPath = batchDisplayPath(b.source_path, event.root_path ? parentDir(event.root_path) : null);
             return (
               <div
                 key={b.id}

@@ -3,6 +3,13 @@ export function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+/** Parent directory (handles both `/` and `\` separators). */
+export function parentDir(path: string): string {
+  const norm = path.replace(/\\/g, "/").replace(/\/$/, "");
+  const idx = norm.lastIndexOf("/");
+  return idx > 0 ? norm.slice(0, idx) : norm;
+}
+
 /**
  * How a batch's source path is shown in the sidebar: `root/relative` when the
  * batch lives under the event root, otherwise the absolute path unchanged.
