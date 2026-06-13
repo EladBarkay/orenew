@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { LicenseInfo, MagnetEvent, PhotoBatch } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 
@@ -9,27 +8,24 @@ type Props = {
   totalPhotos: number;
   activeBatch: PhotoBatch | null;
   queuedTotal: number;
+  allQty: number;
+  cellSize: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
   onProcess: () => void;
   onSettings: () => void;
   onSetAllQty: (qty: number) => void;
+  onCellSizeChange: (size: number) => void;
 };
 
 export default function Toolbar({
-  event, license, status, totalPhotos, activeBatch, queuedTotal,
-  onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty,
+  event, license, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
+  onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
 }: Props) {
   const isPro = license?.tier === "pro";
-  const [allQty, setAllQty] = useState(1);
-
-  // Reset the stepper whenever the active batch changes.
-  useEffect(() => { setAllQty(1); }, [activeBatch?.id]);
 
   function changeAllQty(delta: number) {
-    const next = Math.max(0, allQty + delta);
-    setAllQty(next);
-    onSetAllQty(next);
+    onSetAllQty(Math.max(0, allQty + delta));
   }
 
   return (
@@ -55,6 +51,13 @@ export default function Toolbar({
           </button>
 
           <div className="ml-auto flex items-center gap-3">
+            {/* Gallery cell size */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-neutral-500">Size:</span>
+              <QtyBtn label="−" onClick={() => onCellSizeChange(Math.max(100, cellSize - 20))} disabled={cellSize <= 100} />
+              <QtyBtn label="+" onClick={() => onCellSizeChange(Math.min(280, cellSize + 20))} disabled={cellSize >= 280} />
+            </div>
+
             {/* Batch-wide print qty: set all photos in the current batch at once */}
             {activeBatch && activeBatch.photos.length > 0 && (
               <div className="flex items-center gap-1.5">
