@@ -57,58 +57,57 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
         .collect()
 }
 
+/// Collect photos in canonical event order (batch order → photo order within batch)
+/// for the given quantity map. Keys of `quantities` determine which photos are included.
+fn collect_selected(event: &crate::project::model::Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
+    event
+        .batches.iter()
+        .flat_map(|b| &b.photos)
+        .filter(|p| quantities.contains_key(&p.id))
+        .cloned()
+        .collect()
+}
+
 #[tauri::command]
 pub async fn export_batch(
     event_id: Uuid,
-    batch_id: Uuid,
+    quantities: HashMap<Uuid, u32>,
+    frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
-    export_quantities: HashMap<String, u32>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let event = state.store.load(event_id).map_err(|e| e.to_string())?;
 
-    let batch = event
-        .batches.iter().find(|b| b.id == batch_id)
-        .ok_or_else(|| format!("batch {batch_id} not found"))?;
     let canvas_preset = event
         .canvas_presets.iter().find(|p| p.id == canvas_preset_id)
         .ok_or_else(|| format!("canvas preset {canvas_preset_id} not found"))?
         .clone();
     let frame_preset = event
-        .active_frame_preset_id
-        .and_then(|id| event.frame_presets.iter().find(|p| p.id == id))
-        .ok_or("no active frame preset set for this event")?
+        .frame_presets.iter().find(|p| p.id == frame_preset_id)
+        .ok_or_else(|| format!("frame preset {frame_preset_id} not found"))?
         .clone();
     let output_root = event
         .output_folder.as_ref()
         .ok_or("no output folder configured — set one in event settings")?
         .clone();
 
+    let selected = collect_selected(&event, &quantities);
+    let photos = expand_by_quantity(&selected, |p| quantities.get(&p.id).copied().unwrap_or(0));
+
+    if photos.is_empty() {
+        return Err("No photos queued for export — set quantities on gallery photos first".into());
+    }
+
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let output_dir = output_root.join(&timestamp);
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    let original_photo_ids: Vec<Uuid> = batch.photos.iter().map(|p| p.id).collect();
-    let photos = expand_by_quantity(&batch.photos, |p| {
-        export_quantities.get(&p.id.to_string()).copied().unwrap_or(0)
-    });
-
-    if photos.is_empty() {
-        return Err("No photos queued for export — use the export quantity steppers on photos in the gallery".into());
-    }
-
     let output_dir_clone = output_dir.clone();
-
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
-
-    // Free tier => watermark output; Pro => clean.
     let watermark = state.watermark();
-
     let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
-
-    // Store a reference to the state so we can update export_count after export
     let store = state.store.clone();
 
     // Background thread — does not block the IPC handler
@@ -117,9 +116,7 @@ pub async fn export_batch(
         let total_canvases = if photos.is_empty() { 0 } else { photos.len().div_ceil(chunk_size) };
         let done = std::sync::atomic::AtomicUsize::new(0);
 
-        // Process canvases in parallel, bounded to 4 threads so peak memory
-        // stays ~4 decoded photos (~400MB worst case) under the 500MB ceiling.
-        let process_chunk = |(canvas_idx, chunk): (usize, &[crate::project::model::Photo])| -> Vec<String> {
+        let process_chunk = |(canvas_idx, chunk): (usize, &[Photo])| -> Vec<String> {
             let mut errs: Vec<String> = Vec::new();
             let framed: Vec<_> = chunk
                 .iter()
@@ -171,9 +168,7 @@ pub async fn export_batch(
         if let Ok(mut evt) = store.load(event_id) {
             for batch in &mut evt.batches {
                 for photo in &mut batch.photos {
-                    if original_photo_ids.contains(&photo.id) {
-                        let photo_id_str = photo.id.to_string();
-                        let qty = export_quantities.get(&photo_id_str).copied().unwrap_or(0);
+                    if let Some(&qty) = quantities.get(&photo.id) {
                         if qty > 0 {
                             photo.export_count += qty;
                         }
@@ -195,10 +190,9 @@ pub async fn export_batch(
 #[tauri::command]
 pub async fn print_photos(
     event_id: Uuid,
-    photo_ids: Vec<Uuid>,
     quantities: HashMap<Uuid, u32>,
+    frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
-    frame_preset_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
@@ -206,22 +200,14 @@ pub async fn print_photos(
         .canvas_presets.iter().find(|p| p.id == canvas_preset_id)
         .ok_or_else(|| format!("canvas preset {canvas_preset_id} not found"))?
         .clone();
-    // Frame preset: explicit choice from the confirm popup, else the active one.
-    let frame_preset = frame_preset_id
-        .or(event.active_frame_preset_id)
-        .and_then(|id| event.frame_presets.iter().find(|p| p.id == id))
-        .ok_or("no frame preset selected")?
+    let frame_preset = event
+        .frame_presets.iter().find(|p| p.id == frame_preset_id)
+        .ok_or_else(|| format!("frame preset {frame_preset_id} not found"))?
         .clone();
 
     let watermark = state.watermark();
 
-    // Expand photos by their requested quantities: a photo with qty=3 appears 3 times.
-    let selected: Vec<Photo> = event
-        .batches.iter()
-        .flat_map(|b| &b.photos)
-        .filter(|p| photo_ids.contains(&p.id))
-        .cloned()
-        .collect();
+    let selected = collect_selected(&event, &quantities);
     let photos = expand_by_quantity(&selected, |p| quantities.get(&p.id).copied().unwrap_or(1));
 
     if photos.is_empty() {
@@ -230,10 +216,8 @@ pub async fn print_photos(
 
     let slot_w = canvas_preset.slot_width();
     let slot_h = canvas_preset.slot_height();
-
     let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
 
-    // Frame in parallel, bounded to 4 threads to respect the memory ceiling.
     let framed: Vec<_> = run_bounded(|| {
         photos
             .par_iter()
@@ -245,14 +229,11 @@ pub async fn print_photos(
             .collect()
     });
 
-    // Compose canvases (apply free-tier watermark per canvas)
     let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)
         .into_iter()
         .map(|c| if watermark { crate::canvas::compositor::apply_watermark(&c) } else { c })
         .collect();
 
-    // Write composed canvases to a temp dir. Actual printer submission is
-    // deferred — for now we only produce the print-ready files.
     let tmp_dir = std::env::temp_dir().join("magnet_print");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
 
@@ -263,16 +244,14 @@ pub async fn print_photos(
         paths.push(p);
     }
 
-    // Increment print counts and persist
     for batch in &mut event.batches {
         for photo in &mut batch.photos {
-            if photo_ids.contains(&photo.id) {
-                photo.print_count += quantities.get(&photo.id).copied().unwrap_or(1);
+            if let Some(&qty) = quantities.get(&photo.id) {
+                photo.print_count += qty;
             }
         }
     }
     state.store.save(&event).map_err(|e| e.to_string())?;
 
-    // Return the number of print-ready canvas files produced.
     Ok(paths.len())
 }

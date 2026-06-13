@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { LicenseInfo, MagnetEvent, PhotoBatch } from "../types";
-import { ExportIcon, PrintIcon, SettingsIcon, TrashIcon } from "./icons";
+import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 
 type Props = {
   event: MagnetEvent | null;
@@ -8,19 +8,17 @@ type Props = {
   status: string;
   totalPhotos: number;
   activeBatch: PhotoBatch | null;
-  queuedPrints: number;
-  hasFramePreset: boolean;
+  queuedTotal: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
-  onPrint: () => void;
-  onExport: () => void;
+  onProcess: () => void;
   onSettings: () => void;
-  onSetAllPrintQty: (qty: number) => void;
+  onSetAllQty: (qty: number) => void;
 };
 
 export default function Toolbar({
-  event, license, status, totalPhotos, activeBatch, queuedPrints, hasFramePreset,
-  onOpenEvent, onDeleteEvent, onPrint, onExport, onSettings, onSetAllPrintQty,
+  event, license, status, totalPhotos, activeBatch, queuedTotal,
+  onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty,
 }: Props) {
   const isPro = license?.tier === "pro";
   const [allQty, setAllQty] = useState(1);
@@ -31,7 +29,7 @@ export default function Toolbar({
   function changeAllQty(delta: number) {
     const next = Math.max(0, allQty + delta);
     setAllQty(next);
-    onSetAllPrintQty(next);
+    onSetAllQty(next);
   }
 
   return (
@@ -72,29 +70,13 @@ export default function Toolbar({
             )}
 
             <button
-              onClick={onPrint}
-              disabled={!activeBatch || queuedPrints === 0 || !hasFramePreset}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm transition-colors"
-              title={
-                !hasFramePreset
-                  ? "Set an active frame preset first"
-                  : queuedPrints === 0
-                  ? "Set print quantities on photos in the gallery first"
-                  : ""
-              }
+              onClick={onProcess}
+              disabled={queuedTotal === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
+              title={queuedTotal === 0 ? "Set quantities on gallery photos first" : ""}
             >
               <PrintIcon />
-              Print{queuedPrints > 0 ? ` (${queuedPrints})` : ""}
-            </button>
-
-            <button
-              onClick={onExport}
-              disabled={!activeBatch || activeBatch.photos.length === 0 || !hasFramePreset}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
-              title={!hasFramePreset ? "Set an active frame preset first" : ""}
-            >
-              <ExportIcon />
-              Export
+              Process{queuedTotal > 0 ? ` (${queuedTotal})` : ""}
             </button>
           </div>
         </>

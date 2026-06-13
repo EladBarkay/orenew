@@ -2,9 +2,8 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
-import ExportDialog from "./components/ExportDialog";
+import ProcessDialog from "./components/ProcessDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
-import PrintConfirmDialog from "./components/PrintConfirmDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetManager from "./components/CanvasPresetManager";
 import Toolbar from "./components/Toolbar";
@@ -13,7 +12,7 @@ import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, LicenseInfo } from "./types";
 
-type Modal = "export" | "print" | "addFrame" | "settings" | "canvasPresets" | null;
+type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
 
 export default function App() {
   const [event, setEvent] = useState<MagnetEvent | null>(null);
@@ -23,18 +22,11 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseInfo | null>(null);
-  // Bumped whenever a frame PNG changes on disk, to force preview refetch.
   const [frameNonce, setFrameNonce] = useState(0);
-  // Frame preset currently being edited (opens FramePresetDialog in edit mode).
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
-  // Per-photo print quantities for the current print queue (session-only,
-  // separate from each photo's historical print_count).
-  const [printQueue, setPrintQueue] = useState<Record<string, number>>({});
-  // Per-photo export quantities for the current export queue (session-only,
-  // separate from each photo's historical export_count).
-  const [exportQueue, setExportQueue] = useState<Record<string, number>>({});
+  // Unified per-photo queue: photoId → quantity (session-only).
+  const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
 
-  // Load any saved license once on startup.
   useEffect(() => {
     invoke<LicenseInfo | null>("get_license_info")
       .then((info) => setLicense(info ?? null))
@@ -57,8 +49,7 @@ export default function App() {
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
       setSelected(null);
-      setPrintQueue({});
-      // Re-establish FS watches for this event's batches + frame PNGs.
+      setPhotoQueue({});
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
     } catch (e) {
@@ -117,13 +108,6 @@ export default function App() {
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
-  async function selectFrame(preset: FramePreset) {
-    if (!event) return;
-    const updated = { ...event, active_frame_preset_id: preset.id };
-    setEvent(updated);
-    await invoke("save_event", { event: updated }).catch(() => {});
-  }
-
   async function deleteFramePreset(preset: FramePreset) {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
@@ -180,11 +164,10 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
-  const hasFramePreset = !!event?.active_frame_preset_id;
-  const queuedPrints = Object.values(printQueue).reduce((s, q) => s + q, 0);
+  const queuedTotal = Object.values(photoQueue).reduce((s, q) => s + q, 0);
 
   function adjustQty(photoId: string, delta: number) {
-    setPrintQueue((prev) => {
+    setPhotoQueue((prev) => {
       const next = Math.max(0, (prev[photoId] ?? 0) + delta);
       const updated = { ...prev };
       if (next === 0) delete updated[photoId];
@@ -193,19 +176,17 @@ export default function App() {
     });
   }
 
-  // Set all photos in the active batch to the same print quantity.
-  function handleSetAllPrintQty(qty: number) {
+  function handleSetAllQty(qty: number) {
     if (!activeBatch) return;
     if (qty <= 0) {
-      setPrintQueue({});
+      setPhotoQueue({});
       return;
     }
     const q: Record<string, number> = {};
     for (const p of activeBatch.photos) q[p.id] = qty;
-    setPrintQueue(q);
+    setPhotoQueue(q);
   }
 
-  // Apply an orientation override to a single photo (IPC + optimistic update).
   async function handleOrientationOverride(photoId: string, orientation: Orientation) {
     if (!event) return;
     try {
@@ -227,18 +208,22 @@ export default function App() {
     }
   }
 
-  // After a successful print: optimistically bump print_count for queued photos
-  // (the backend has already persisted these increments) and clear the queue.
-  function handlePrinted() {
-    const bump = (p: Photo): Photo =>
-      printQueue[p.id] ? { ...p, print_count: p.print_count + printQueue[p.id] } : p;
+  // After processing: optimistically bump counts for queued photos, clear queue.
+  function handleProcessed(destination: "print" | "export", queue: Record<string, number>) {
+    const bump = (p: Photo): Photo => {
+      const qty = queue[p.id] ?? 0;
+      if (!qty) return p;
+      return destination === "print"
+        ? { ...p, print_count: p.print_count + qty }
+        : { ...p, export_count: p.export_count + qty };
+    };
     setEvent((prev) =>
       prev
         ? { ...prev, batches: prev.batches.map((b) => ({ ...b, photos: b.photos.map(bump) })) }
         : prev
     );
     setActiveBatch((prev) => (prev ? { ...prev, photos: prev.photos.map(bump) } : prev));
-    setPrintQueue({});
+    setPhotoQueue({});
   }
 
   return (
@@ -249,17 +234,14 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         activeBatch={activeBatch}
-        queuedPrints={queuedPrints}
-        hasFramePreset={hasFramePreset}
+        queuedTotal={queuedTotal}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
-        onPrint={() => setModal("print")}
-        onExport={() => setModal("export")}
+        onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
-        onSetAllPrintQty={handleSetAllPrintQty}
+        onSetAllQty={handleSetAllQty}
       />
 
-      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {event ? (
           <Sidebar
@@ -268,11 +250,10 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPrintQueue({}); setExportQueue({}); }}
+            onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue({}); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             onAddFrame={() => setModal("addFrame")}
-            onSelectFrame={selectFrame}
             onEditFrame={setEditingFrame}
             onDeleteFrame={deleteFramePreset}
             onManageCanvas={() => setModal("canvasPresets")}
@@ -285,22 +266,14 @@ export default function App() {
           </aside>
         )}
 
-        {/* Gallery area */}
         {event ? (
           <div className="flex flex-1 overflow-hidden">
             <Gallery
               photos={photos}
               selectedId={selected?.id ?? null}
               onSelect={setSelected}
-              printQueue={printQueue}
+              photoQueue={photoQueue}
               onQtyDelta={adjustQty}
-              exportQueue={exportQueue}
-              onExportQtyDelta={(photoId, delta) => {
-                setExportQueue((prev) => ({
-                  ...prev,
-                  [photoId]: Math.max(0, (prev[photoId] ?? 0) + delta),
-                }));
-              }}
             />
             {selected && (
               <PreviewPanel
@@ -318,23 +291,13 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {modal === "export" && event && activeBatch && (
-        <ExportDialog
+      {modal === "process" && event && (
+        <ProcessDialog
           event={event}
-          batch={activeBatch}
-          exportQueue={exportQueue}
+          photoQueue={photoQueue}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
-          onClearExportQueue={() => setExportQueue({})}
-        />
-      )}
-      {modal === "print" && event && (
-        <PrintConfirmDialog
-          event={event}
-          printQueue={printQueue}
-          onClose={() => setModal(null)}
-          onEventUpdate={updateEvent}
-          onPrinted={handlePrinted}
+          onProcessed={handleProcessed}
         />
       )}
       {modal === "addFrame" && event && (

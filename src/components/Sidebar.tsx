@@ -12,7 +12,6 @@ type Props = {
   onDeleteBatch: (b: PhotoBatch) => void;
   onReorderBatch: (targetId: string) => void;
   onAddFrame: () => void;
-  onSelectFrame: (p: FramePreset) => void;
   onEditFrame: (p: FramePreset) => void;
   onDeleteFrame: (p: FramePreset) => void;
   onManageCanvas: () => void;
@@ -21,7 +20,7 @@ type Props = {
 export default function Sidebar({
   event, activeBatch, draggedBatchId, setDraggedBatchId,
   onAddBatch, onSelectBatch, onDeleteBatch, onReorderBatch,
-  onAddFrame, onSelectFrame, onEditFrame, onDeleteFrame, onManageCanvas,
+  onAddFrame, onEditFrame, onDeleteFrame, onManageCanvas,
 }: Props) {
   return (
     <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
@@ -94,8 +93,6 @@ export default function Sidebar({
               <SidebarItem
                 label={p.name}
                 sublabel={`${p.target_ratio_w}:${p.target_ratio_h} · ${p.crop_method === "center" ? "center" : "rule of thirds"}`}
-                active={p.id === event.active_frame_preset_id}
-                onClick={() => onSelectFrame(p)}
               />
               <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
@@ -176,18 +173,26 @@ function Section({
 function SidebarItem({
   label, sublabel, active, onClick,
 }: {
-  label: string; sublabel?: string; active: boolean; onClick: () => void;
+  label: string; sublabel?: string; active?: boolean; onClick?: () => void;
 }) {
+  const cls = [
+    "w-full text-left px-3 py-1.5 text-sm transition-colors",
+    active ? "bg-blue-600/20 text-blue-300" : "text-neutral-300",
+    onClick ? "hover:bg-neutral-700/60" : "",
+  ].join(" ");
+
+  if (onClick) {
+    return (
+      <button onClick={onClick} className={cls}>
+        <span className="block truncate">{label}</span>
+        {sublabel && <span className="block text-[10px] text-neutral-500">{sublabel}</span>}
+      </button>
+    );
+  }
   return (
-    <button
-      onClick={onClick}
-      className={[
-        "w-full text-left px-3 py-1.5 text-sm transition-colors",
-        active ? "bg-blue-600/20 text-blue-300" : "text-neutral-300 hover:bg-neutral-700/60",
-      ].join(" ")}
-    >
+    <div className={cls}>
       <span className="block truncate">{label}</span>
       {sublabel && <span className="block text-[10px] text-neutral-500">{sublabel}</span>}
-    </button>
+    </div>
   );
 }
