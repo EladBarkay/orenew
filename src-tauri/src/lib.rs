@@ -85,7 +85,7 @@ pub fn run() {
             // Background task: revalidate on startup, then retry every 60s until
             // either the server responds or there's no license to revalidate.
             let app_handle_bg = app.handle().clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 revalidation_loop(app_handle_bg, license_path).await;
             });
 
