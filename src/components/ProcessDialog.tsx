@@ -217,7 +217,8 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
           ) : (
             <button
               onClick={() => setShowNewPreset(true)}
-              className="text-xs text-blue-400 hover:text-blue-300"
+              disabled={busy}
+              className={`text-xs ${busy ? "text-neutral-600 cursor-not-allowed" : "text-blue-400 hover:text-blue-300"}`}
             >
               + New preset
             </button>
