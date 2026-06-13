@@ -22,7 +22,13 @@ export default function Toolbar({
   event, license, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
   onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
 }: Props) {
-  const isPro = license?.tier === "pro";
+  const tier = license?.tier ?? "free";
+  const tierLabel = tier === "studio" ? "Studio" : tier === "pro" ? "Pro" : "Free";
+  const tierColor = tier === "studio"
+    ? "bg-purple-700/80 text-white"
+    : tier === "pro"
+    ? "bg-green-700/80 text-white"
+    : "bg-neutral-700 text-neutral-300";
 
   function changeAllQty(delta: number) {
     onSetAllQty(Math.max(0, allQty + delta));
@@ -101,13 +107,8 @@ export default function Toolbar({
         ].join(" ")}
       >
         <SettingsIcon />
-        <span
-          className={[
-            "font-semibold px-1.5 py-0.5 rounded-full text-[10px]",
-            isPro ? "bg-green-700/80 text-white" : "bg-neutral-700 text-neutral-300",
-          ].join(" ")}
-        >
-          {isPro ? "Pro" : "Free"}
+        <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] ${tierColor}`}>
+          {tierLabel}
         </span>
       </button>
     </header>

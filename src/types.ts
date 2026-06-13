@@ -50,12 +50,15 @@ export type CanvasPreset = {
   rows: number;
 };
 
-export type Tier = "free" | "pro";
+export type Tier = "free" | "pro" | "studio";
 
 export type LicenseInfo = {
   email: string;
-  expiry: string; // ISO date (YYYY-MM-DD)
   tier: Tier;
+  expires_at: string | null; // ISO date or null (active subscription, no fixed end)
+  token: string;
+  device_id: string;
+  cached_at: string; // ISO datetime
 };
 
 export type MagnetEvent = {

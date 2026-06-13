@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
 import ProcessDialog from "./components/ProcessDialog";
@@ -34,6 +35,18 @@ export default function App() {
     invoke<LicenseInfo | null>("get_license_info")
       .then((info) => setLicense(info ?? null))
       .catch(() => {});
+  }, []);
+
+  // Background revalidation: update license when the background task resolves.
+  useEffect(() => {
+    const unsub = listen<void>("tier-changed", async () => {
+      try {
+        const info = await invoke<LicenseInfo | null>("get_license_info");
+        setLicense(info ?? null);
+      } catch {}
+    });
+    const unsub2 = listen<void>("license-expired", () => setLicense(null));
+    return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
   }, []);
 
   useFsWatcher(event, activeBatch, {
