@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, MagnetEvent } from "../types";
 import CanvasPresetForm from "./CanvasPresetForm";
 import { Modal } from "./ui";
+import { reorderById } from "../lib/reorder";
 
 type Props = {
   event: MagnetEvent;
@@ -34,14 +35,9 @@ export default function CanvasPresetManager({ event, onClose, onEventUpdate }: P
   }
 
   function reorder(targetId: string) {
-    if (!draggedId || draggedId === targetId) return;
-    const presets = [...event.canvas_presets];
-    const fromIdx = presets.findIndex((p) => p.id === draggedId);
-    const toIdx = presets.findIndex((p) => p.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = presets.splice(fromIdx, 1);
-    presets.splice(toIdx, 0, moved);
-    const updated = { ...event, canvas_presets: presets };
+    const canvas_presets = reorderById(event.canvas_presets, draggedId, targetId);
+    if (!canvas_presets) return;
+    const updated = { ...event, canvas_presets };
     onEventUpdate(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }

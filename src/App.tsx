@@ -12,6 +12,7 @@ import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
+import { reorderById } from "./lib/reorder";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
 
 type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
@@ -125,27 +126,19 @@ export default function App() {
   }
 
   function reorderBatch(targetId: string) {
-    if (!event || !draggedBatchId || draggedBatchId === targetId) return;
-    const batches = [...event.batches];
-    const fromIdx = batches.findIndex((b) => b.id === draggedBatchId);
-    const toIdx = batches.findIndex((b) => b.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = batches.splice(fromIdx, 1);
-    batches.splice(toIdx, 0, moved);
+    if (!event) return;
+    const batches = reorderById(event.batches, draggedBatchId, targetId);
+    if (!batches) return;
     const updated = { ...event, batches };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
   function reorderFramePreset(targetId: string) {
-    if (!event || !draggedFrameId || draggedFrameId === targetId) return;
-    const presets = [...event.frame_presets];
-    const fromIdx = presets.findIndex((p) => p.id === draggedFrameId);
-    const toIdx = presets.findIndex((p) => p.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = presets.splice(fromIdx, 1);
-    presets.splice(toIdx, 0, moved);
-    const updated = { ...event, frame_presets: presets };
+    if (!event) return;
+    const frame_presets = reorderById(event.frame_presets, draggedFrameId, targetId);
+    if (!frame_presets) return;
+    const updated = { ...event, frame_presets };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
