@@ -11,7 +11,8 @@ import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
-import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, LicenseInfo } from "./types";
+import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
+import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
 
 type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
 
@@ -23,7 +24,7 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
-  const [license, setLicense] = useState<LicenseInfo | null>(null);
+  const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   // Unified per-photo queue: photoId → quantity (session-only).
@@ -34,22 +35,25 @@ export default function App() {
   const colCountRef = useRef(1);
 
   useEffect(() => {
-    invoke<LicenseInfo | null>("get_license_info")
-      .then((info) => setLicense(info ?? null))
+    invoke<Entitlement | null>("get_entitlement")
+      .then((info) => setEntitlement(info ?? null))
       .catch(() => {});
   }, []);
 
-  // Background revalidation: update license when the background task resolves.
+  // Background refresh: update entitlement when the background task resolves.
   useEffect(() => {
     const unsub = listen<void>("tier-changed", async () => {
       try {
-        const info = await invoke<LicenseInfo | null>("get_license_info");
-        setLicense(info ?? null);
+        const info = await invoke<Entitlement | null>("get_entitlement");
+        setEntitlement(info ?? null);
       } catch {}
     });
-    const unsub2 = listen<void>("license-expired", () => setLicense(null));
+    const unsub2 = listen<void>("license-expired", () => setEntitlement(null));
     return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
   }, []);
+
+  // Completes OAuth sign-in when the magnet://auth-callback deep link arrives.
+  useAuthDeepLink(setEntitlement);
 
   useFsWatcher(event, activeBatch, {
     onEvent: setEvent,
@@ -333,7 +337,7 @@ export default function App() {
     <div className="flex flex-col h-screen bg-neutral-900 text-neutral-100 select-none">
       <Toolbar
         event={event}
-        license={license}
+        entitlement={entitlement}
         status={status}
         totalPhotos={totalPhotos}
         activeBatch={activeBatch}
@@ -432,9 +436,9 @@ export default function App() {
       )}
       {modal === "settings" && (
         <SettingsDialog
-          license={license}
+          entitlement={entitlement}
           onClose={() => setModal(null)}
-          onLicenseChange={setLicense}
+          onEntitlementChange={setEntitlement}
         />
       )}
       {modal === "canvasPresets" && event && (

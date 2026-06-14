@@ -83,12 +83,15 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 - Photo/XMP change → recompute `content_hash`; if changed: reset `print_count`, invalidate thumbnail
 - Frame PNG change → invalidate framed previews using that frame, UI refreshes immediately
 
-### Licensing
+### Auth & Entitlements (Supabase)
 
 - **Free tier**: output watermarked (composited on export/print canvas). No other limits.
-- **Pro / Studio tier**: no watermark; tier is server-issued.
-- License cache stored in `{app_data}/license.json`, device-bound, 14-day grace period offline.
-- Dev bypass: `MAGNET_DEV_EMAIL` / `MAGNET_DEV_KEY` compile-time constants activate Pro instantly.
+- **Pro / Studio tier**: no watermark; tier comes from a Supabase `entitlements` row.
+- Identity via Supabase Auth (email+password, Google, Facebook). Tier is the
+  `entitlements` row for the signed-in user — no license keys.
+- Session cache (`{app_data}/session.json`, refresh token) + entitlement cache
+  (`{app_data}/entitlement.json`), 14-day offline grace from last verification.
+- Dev bypass: `MAGNET_DEV_TIER=pro|studio` compile-time env seeds that tier, no sign-in.
 
 ## Folder Structure
 
@@ -106,7 +109,7 @@ magnet/
 │   │   │   ├── batch.rs       # export_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
-│   │   │   └── license.rs     # activate_init, activate_confirm, activate_dev_license, get_license_info, clear_license
+│   │   │   └── auth.rs        # establish_session, get_entitlement, sign_out
 │   │   ├── photo/             # Core image processing — no Tauri deps, unit-tested
 │   │   │   ├── loader.rs      # load_photo(), read_exif_orientation(), compute_content_hash() (content-based)
 │   │   │   ├── orientation.rs # detect_orientation() → Photo::effective_orientation()
@@ -117,7 +120,7 @@ magnet/
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px)
-│   │   ├── license/           # validator.rs (cache load/save, grace period), client.rs (HTTP OTP flow, revalidation), device.rs (machine-uid fingerprint)
+│   │   ├── auth/              # entitlement.rs (Tier, cache, grace + expiry), session.rs (session.json), jwt.rs (Supabase JWKS verify), client.rs (token refresh + entitlement fetch)
 │   │   └── watcher/           # fs_watcher.rs — notify, emits `fs-changed` with changed path
 │   └── Cargo.toml
 ├── src/
@@ -129,11 +132,12 @@ magnet/
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
 │   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used by manager)
 │   │   ├── CanvasPresetManager.tsx # list/edit/delete canvas presets
-│   │   ├── SettingsDialog.tsx      # license activation (OTP flow + dev bypass), tier display
+│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, sign out
 │   │   ├── EmptyState.tsx          # empty gallery placeholder
 │   │   ├── icons.tsx               # SVG icon components
 │   │   └── ui.tsx                  # shared Modal and primitive UI components
-│   └── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useExportProgress.ts
+│   ├── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useExportProgress.ts, useAuthDeepLink.ts
+│   └── lib/                   # supabase.ts (client), auth.ts (establishFromSession → Rust)
 └── package.json
 ```
 
@@ -146,21 +150,36 @@ preset + canvas preset, then calls `print_photos` or `export_batch`. After compl
 / `export_count` on each Photo is bumped optimistically and the queue is cleared. Actual printer
 submission is deferred — files go to a temp dir, OS printer dialog is not yet wired.
 
-### Licensing (current)
+### Auth & Entitlements (current)
 
-Two-step server activation: email + key → server sends OTP → `activate_confirm` → `license.json`
-written to `{app_data}/`. `license.json` is bound to the device via `device_id` (machine-uid);
-mismatched files are rejected. 14-day offline grace period; after expiry the app falls back to Free.
+**Clean split**: the frontend (`supabase-js`) only drives interactive sign-in;
+**Rust is the source of truth for tier**. After email/password or OAuth sign-in,
+the frontend hands `{access_token, refresh_token, expires_at}` to Rust via
+`establish_session`. Rust verifies the JWT against Supabase JWKS (`auth/jwt.rs`,
+asymmetric keys — no secret in the binary), fetches the `entitlements` row over
+PostgREST + RLS (`auth/client.rs::fetch_entitlement`, Bearer token → caller's row
+only), and persists `session.json` + `entitlement.json` in `{app_data}/`.
 
-Background revalidation runs at startup (retries every 60 s if unreachable). Emits `tier-changed`
-or `license-expired` Tauri events when state changes.
+OAuth uses PKCE and returns via the custom deep link `magnet://auth-callback`
+(`tauri-plugin-deep-link`, handled by `useAuthDeepLink`); Google/Meta only ever
+see Supabase's HTTPS callback, never the custom scheme.
 
-**Dev bypass**: enter `MAGNET_DEV_EMAIL` + `MAGNET_DEV_KEY` in Settings → calls
-`activate_dev_license`, skips OTP, writes a synthetic Pro `LicenseInfo` with `token = "dev-token"`.
-Revalidation loop skips dev-token licenses entirely.
+`auth_refresh_loop` (in `lib.rs`) runs at startup: refresh access token → verify →
+re-fetch entitlement → save → emit `tier-changed`. Retries every 60 s while
+offline; if the 14-day grace (from `entitlement.last_verified`) has lapsed it
+clears caches and emits `license-expired`. `Entitlement::effective_tier()` also
+downgrades to Free once `expires_at` passes.
 
-`AppState::tier()` gates watermarking in `export_batch`/`print_photos`. Free tier composites a
-procedural diagonal-stripe watermark (no bundled asset/font).
+**Dev bypass**: compile with `MAGNET_DEV_TIER=pro` (or `studio`) → `lib.rs` seeds
+a synthetic `AuthState` (sentinel refresh token `dev-bypass`); the refresh loop
+skips it. No sign-in, no network.
+
+`AppState::tier()` gates watermarking in `export_batch`/`print_photos`. Free tier
+composites a procedural diagonal-stripe watermark (no bundled asset/font).
+
+Supabase project config is baked in at build time via `build.rs`
+(`SUPABASE_URL`, `SUPABASE_ANON_KEY`) and Vite (`VITE_SUPABASE_*`). See
+`docs/supabase.md` for project setup + the SQL migration.
 
 ### File watcher (current)
 
