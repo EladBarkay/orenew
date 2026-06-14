@@ -250,33 +250,18 @@ export default function App() {
     setPhotoQueue(q);
   }
 
-  async function handleOrientationOverride(photoId: string, orientation: Orientation) {
+  // Set (or clear, with `null`) a photo's orientation override and mirror the
+  // change into event/activeBatch/selected state.
+  async function setOrientation(photoId: string, orientation: Orientation | null) {
     if (!event) return;
     try {
-      await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+      if (orientation) {
+        await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+      } else {
+        await invoke("clear_orientation_override", { eventId: event.id, photoId });
+      }
       const updatePhoto = (p: Photo): Photo =>
         p.id === photoId ? { ...p, orientation_override: orientation } : p;
-      const updatedEvent = {
-        ...event,
-        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
-      };
-      setEvent(updatedEvent);
-      if (activeBatch) {
-        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
-        if (refreshedBatch) setActiveBatch(refreshedBatch);
-      }
-      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
-    } catch (e) {
-      setStatus(`Error: ${e}`);
-    }
-  }
-
-  async function handleClearOrientationOverride(photoId: string) {
-    if (!event) return;
-    try {
-      await invoke("clear_orientation_override", { eventId: event.id, photoId });
-      const updatePhoto = (p: Photo): Photo =>
-        p.id === photoId ? { ...p, orientation_override: null } : p;
       const updatedEvent = {
         ...event,
         batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
@@ -395,8 +380,8 @@ export default function App() {
                   photo={selected}
                   onClose={() => setSelected(null)}
                   frameNonce={frameNonce}
-                  onOrientationOverride={handleOrientationOverride}
-                  onClearOrientationOverride={handleClearOrientationOverride}
+                  onOrientationOverride={(id, o) => setOrientation(id, o)}
+                  onClearOrientationOverride={(id) => setOrientation(id, null)}
                   width={previewWidth}
                 />
               </>
