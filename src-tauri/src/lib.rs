@@ -113,8 +113,10 @@ pub fn run() {
             commands::frame_preset::create_frame_preset,
             commands::frame_preset::update_frame_preset,
             commands::frame_preset::delete_frame_preset,
+            commands::project::open_in_explorer,
             commands::license::activate_init,
             commands::license::activate_confirm,
+            commands::license::activate_dev_license,
             commands::license::get_license_info,
             commands::license::clear_license,
         ])
@@ -149,6 +151,11 @@ async fn revalidation_loop(app: tauri::AppHandle, license_path: PathBuf) {
             // No license loaded — nothing to revalidate.
             break;
         };
+
+        // Dev license: skip server revalidation entirely.
+        if existing.token == "dev-token" {
+            break;
+        }
 
         match license::client::revalidate(&existing).await {
             RevalidateResult::Ok(updated) => {

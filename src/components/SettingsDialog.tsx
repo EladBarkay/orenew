@@ -12,6 +12,9 @@ type Props = {
 
 type Step = "form" | "otp";
 
+const DEV_EMAIL = "eladb1231@gmail.com";
+const DEV_KEY = "DEV-MAGNET-PRO";
+
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
   pro: "Pro",
@@ -63,9 +66,24 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
     setError("");
     setBusy(true);
     try {
+      const trimmedEmail = email.trim();
+      const trimmedKey = key.trim();
+
+      // Dev bypass: skip OTP and activate directly.
+      if (trimmedEmail === DEV_EMAIL && trimmedKey === DEV_KEY) {
+        const info = await invoke<LicenseInfo>("activate_dev_license", {
+          email: trimmedEmail,
+          key: trimmedKey,
+        });
+        onLicenseChange(info);
+        setEmail("");
+        setKey("");
+        return;
+      }
+
       const id = await invoke<string>("activate_init", {
-        email: email.trim(),
-        key: key.trim(),
+        email: trimmedEmail,
+        key: trimmedKey,
       });
       setChallengeId(id);
       setStep("otp");
