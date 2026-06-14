@@ -11,10 +11,11 @@ type Props = {
   /** Bumped when a frame PNG changes on disk, to force preview refetch. */
   frameNonce: number;
   onOrientationOverride: (photoId: string, orientation: Orientation) => void;
+  onClearOrientationOverride: (photoId: string) => void;
   width?: number;
 };
 
-export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride, width }: Props) {
+export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride, onClearOrientationOverride, width }: Props) {
   const filename = basename(photo.path);
   const thumb = useThumbnail(photo.path, photo.content_hash);
   const [previewFrameId, setPreviewFrameId] = useState<string | null>(
@@ -35,8 +36,15 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
 
   const displaySrc = framedSrc ?? thumb;
   const naturalOrientation = inferOrientation(photo);
-  // Effective orientation shown and used for the toggle.
   const orientation = photo.orientation_override ?? naturalOrientation;
+
+  function handleOrientClick(o: Orientation) {
+    if (o === naturalOrientation && photo.orientation_override !== null) {
+      onClearOrientationOverride(photo.id);
+    } else {
+      onOrientationOverride(photo.id, o);
+    }
+  }
 
   return (
     <aside
@@ -81,13 +89,13 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
               label="L"
               title="Landscape"
               active={orientation === "landscape"}
-              onClick={() => onOrientationOverride(photo.id, "landscape")}
+              onClick={() => handleOrientClick("landscape")}
             />
             <OrientBtn
               label="P"
               title="Portrait"
               active={orientation === "portrait"}
-              onClick={() => onOrientationOverride(photo.id, "portrait")}
+              onClick={() => handleOrientClick("portrait")}
             />
           </div>
         </div>

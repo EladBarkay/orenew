@@ -22,6 +22,7 @@ export default function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
+  const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
@@ -30,6 +31,7 @@ export default function App() {
   const [cellSize, setCellSize] = useState(168);
   const [previewWidth, setPreviewWidth] = useState(288);
   const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const colCountRef = useRef(1);
 
   useEffect(() => {
     invoke<LicenseInfo | null>("get_license_info")
@@ -131,6 +133,19 @@ export default function App() {
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
+  function reorderFramePreset(targetId: string) {
+    if (!event || !draggedFrameId || draggedFrameId === targetId) return;
+    const presets = [...event.frame_presets];
+    const fromIdx = presets.findIndex((p) => p.id === draggedFrameId);
+    const toIdx = presets.findIndex((p) => p.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = presets.splice(fromIdx, 1);
+    presets.splice(toIdx, 0, moved);
+    const updated = { ...event, frame_presets: presets };
+    setEvent(updated);
+    invoke("save_event", { event: updated }).catch(() => {});
+  }
+
   async function deleteFramePreset(preset: FramePreset) {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
@@ -198,13 +213,16 @@ export default function App() {
   useEffect(() => {
     if (!selected) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
         const idx = photos.findIndex((p) => p.id === selected.id);
         if (idx < 0) return;
-        const next = e.key === "ArrowRight"
-          ? Math.min(photos.length - 1, idx + 1)
-          : Math.max(0, idx - 1);
+        const cols = colCountRef.current;
+        let next = idx;
+        if (e.key === "ArrowRight") next = Math.min(photos.length - 1, idx + 1);
+        else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
+        else if (e.key === "ArrowDown") next = Math.min(photos.length - 1, idx + cols);
+        else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
         setSelected(photos[next]);
       }
       if (e.key === "Escape") setSelected(null);
@@ -240,6 +258,27 @@ export default function App() {
       await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
       const updatePhoto = (p: Photo): Photo =>
         p.id === photoId ? { ...p, orientation_override: orientation } : p;
+      const updatedEvent = {
+        ...event,
+        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
+      };
+      setEvent(updatedEvent);
+      if (activeBatch) {
+        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
+        if (refreshedBatch) setActiveBatch(refreshedBatch);
+      }
+      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
+  async function handleClearOrientationOverride(photoId: string) {
+    if (!event) return;
+    try {
+      await invoke("clear_orientation_override", { eventId: event.id, photoId });
+      const updatePhoto = (p: Photo): Photo =>
+        p.id === photoId ? { ...p, orientation_override: null } : p;
       const updatedEvent = {
         ...event,
         batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
@@ -320,6 +359,9 @@ export default function App() {
             onSelectBatch={(b) => { setActiveBatch(b); setSelected(null); setPhotoQueue(initQueueForBatch(b)); }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
+            draggedFrameId={draggedFrameId}
+            setDraggedFrameId={setDraggedFrameId}
+            onReorderFrame={reorderFramePreset}
             onAddFrame={() => setModal("addFrame")}
             onEditFrame={setEditingFrame}
             onDeleteFrame={deleteFramePreset}
@@ -342,6 +384,7 @@ export default function App() {
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
               cellSize={cellSize}
+              onColCountChange={(n) => { colCountRef.current = n; }}
             />
             {selected && (
               <>
@@ -355,6 +398,7 @@ export default function App() {
                   onClose={() => setSelected(null)}
                   frameNonce={frameNonce}
                   onOrientationOverride={handleOrientationOverride}
+                  onClearOrientationOverride={handleClearOrientationOverride}
                   width={previewWidth}
                 />
               </>
