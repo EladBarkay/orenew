@@ -5,6 +5,7 @@ mod preview;
 mod canvas;
 mod watcher;
 mod auth;
+mod json_store;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
