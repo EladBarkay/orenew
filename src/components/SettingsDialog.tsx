@@ -1,19 +1,18 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { LicenseInfo } from "../types";
+import { Entitlement } from "../types";
+import { supabase } from "../lib/supabase";
+import { establishFromSession } from "../lib/auth";
 import { Modal } from "./ui";
 
 type Props = {
-  license: LicenseInfo | null;
+  entitlement: Entitlement | null;
   onClose: () => void;
-  onLicenseChange: (license: LicenseInfo | null) => void;
+  onEntitlementChange: (entitlement: Entitlement | null) => void;
 };
 
-type Step = "form" | "otp";
-
-const DEV_EMAIL = "eladb1231@gmail.com";
-const DEV_KEY = "DEV-MAGNET-PRO";
+const BUY_URL = "https://magnet.app/pricing";
 
 const TIER_LABELS: Record<string, string> = {
   free: "Free",
@@ -27,114 +26,89 @@ const TIER_COLORS: Record<string, string> = {
   studio: "bg-purple-700/80 text-white",
 };
 
-export default function SettingsDialog({ license, onClose, onLicenseChange }: Props) {
-  const [step, setStep] = useState<Step>("form");
+export default function SettingsDialog({ entitlement, onClose, onEntitlementChange }: Props) {
   const [email, setEmail] = useState("");
-  const [key, setKey] = useState("");
-  const [challengeId, setChallengeId] = useState("");
-  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const tier = license?.tier ?? "free";
-  const isActivated = license !== null;
+  const tier = entitlement?.tier ?? "free";
+  const isSignedIn = entitlement !== null && !!entitlement.email;
 
-  // Listen for background revalidation results (connectivity watcher, revocation)
+  // Background refresh resolved a new tier — refetch the cached entitlement.
   useEffect(() => {
     const unsub = listen<void>("tier-changed", async () => {
       try {
-        const info = await invoke<LicenseInfo | null>("get_license_info");
-        onLicenseChange(info);
+        const info = await invoke<Entitlement | null>("get_entitlement");
+        onEntitlementChange(info ?? null);
       } catch {}
     });
-    return () => { unsub.then(fn => fn()); };
-  }, [onLicenseChange]);
+    const unsub2 = listen<void>("license-expired", () => onEntitlementChange(null));
+    return () => { unsub.then((fn) => fn()); unsub2.then((fn) => fn()); };
+  }, [onEntitlementChange]);
 
-  // Also listen for grace period expiry
-  useEffect(() => {
-    const unsub = listen<void>("license-expired", () => {
-      onLicenseChange(null);
-    });
-    return () => { unsub.then(fn => fn()); };
-  }, [onLicenseChange]);
-
-  async function sendCode() {
-    if (!email.trim() || !key.trim()) {
-      setError("Enter both email and license key");
+  async function signInPassword() {
+    if (!email.trim() || !password) {
+      setError("Enter your email and password");
       return;
     }
     setError("");
     setBusy(true);
     try {
-      const trimmedEmail = email.trim();
-      const trimmedKey = key.trim();
-
-      // Dev bypass: skip OTP and activate directly.
-      if (trimmedEmail === DEV_EMAIL && trimmedKey === DEV_KEY) {
-        const info = await invoke<LicenseInfo>("activate_dev_license", {
-          email: trimmedEmail,
-          key: trimmedKey,
-        });
-        onLicenseChange(info);
-        setEmail("");
-        setKey("");
-        return;
-      }
-
-      const id = await invoke<string>("activate_init", {
-        email: trimmedEmail,
-        key: trimmedKey,
-      });
-      setChallengeId(id);
-      setStep("otp");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyOtp() {
-    if (!otp.trim()) {
-      setError("Enter the 6-digit code");
-      return;
-    }
-    setError("");
-    setBusy(true);
-    try {
-      const info = await invoke<LicenseInfo>("activate_confirm", {
-        challengeId,
-        otp: otp.trim(),
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
+        password,
       });
-      onLicenseChange(info);
-      setStep("form");
+      if (error || !data.session) throw new Error(error?.message ?? "Sign-in failed");
+      const ent = await establishFromSession(data.session);
+      onEntitlementChange(ent);
       setEmail("");
-      setKey("");
-      setOtp("");
+      setPassword("");
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
 
-  async function deactivate() {
+  async function signInOAuth(provider: "google" | "facebook") {
+    setError("");
     setBusy(true);
     try {
-      await invoke("clear_license");
-      onLicenseChange(null);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: "magnet://auth-callback",
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error || !data.url) throw new Error(error?.message ?? "Could not start sign-in");
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(data.url);
+      // The deep-link handler (useAuthDeepLink) completes sign-in on callback.
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
 
-  async function openAccountPortal() {
+  async function signOut() {
+    setBusy(true);
+    try {
+      await invoke("sign_out");
+      onEntitlementChange(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openBuyPage() {
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl("https://magnet.app/account");
+      await openUrl(BUY_URL);
     } catch {}
   }
 
@@ -143,7 +117,7 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
       <div className="space-y-4">
         <h2 className="text-base font-semibold text-neutral-100">Settings</h2>
 
-        {/* License status card */}
+        {/* Tier status card */}
         <div className="rounded-lg bg-neutral-800 p-3 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
@@ -153,12 +127,14 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
               {TIER_LABELS[tier] ?? tier}
             </span>
           </div>
-          {isActivated ? (
+          {isSignedIn ? (
             <div className="text-xs text-neutral-400 space-y-0.5">
-              <p>{license.email}</p>
+              <p>{entitlement!.email}</p>
               <p className="text-neutral-500">
-                {license.expires_at
-                  ? `Expires ${license.expires_at}`
+                {tier === "free"
+                  ? "No active subscription"
+                  : entitlement!.expires_at
+                  ? `Expires ${entitlement!.expires_at}`
                   : "Active subscription"}
               </p>
             </div>
@@ -169,76 +145,83 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
           )}
         </div>
 
-        {isActivated ? (
-          /* Active license: manage / deactivate */
+        {isSignedIn ? (
+          /* Signed in: manage / sign out */
           <div className="flex flex-col gap-2">
+            {tier === "free" && (
+              <button
+                onClick={openBuyPage}
+                className="text-xs text-blue-400 hover:text-blue-300 text-left"
+              >
+                Buy a license ↗
+              </button>
+            )}
             <button
-              onClick={openAccountPortal}
-              className="text-xs text-blue-400 hover:text-blue-300 text-left"
-            >
-              Manage subscription ↗
-            </button>
-            <button
-              onClick={deactivate}
+              onClick={signOut}
               disabled={busy}
               className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 text-left"
             >
-              {busy ? "Deactivating…" : "Deactivate on this device"}
+              {busy ? "Signing out…" : "Sign out"}
             </button>
-          </div>
-        ) : step === "form" ? (
-          /* Step 1: email + key */
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-neutral-400">
-              Email (used at purchase)
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendCode()}
-                placeholder="you@example.com"
-                autoFocus
-                className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </label>
-            <label className="block text-xs font-medium text-neutral-400">
-              License key
-              <input
-                type="text"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendCode()}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm font-mono text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </label>
           </div>
         ) : (
-          /* Step 2: OTP */
-          <div className="space-y-2">
-            <p className="text-xs text-neutral-400">
-              Check <span className="text-neutral-200">{email}</span> for a 6-digit verification code.
+          /* Signed out: sign-in form */
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-neutral-400">
+                Email
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && signInPassword()}
+                  placeholder="you@example.com"
+                  autoFocus
+                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
+              <label className="block text-xs font-medium text-neutral-400">
+                Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && signInPassword()}
+                  placeholder="••••••••"
+                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-neutral-700" />
+              <span className="text-[10px] uppercase tracking-wide text-neutral-500">or</span>
+              <div className="h-px flex-1 bg-neutral-700" />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => signInOAuth("google")}
+                disabled={busy}
+                className="w-full px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 rounded font-medium"
+              >
+                Continue with Google
+              </button>
+              <button
+                onClick={() => signInOAuth("facebook")}
+                disabled={busy}
+                className="w-full px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 rounded font-medium"
+              >
+                Continue with Facebook
+              </button>
+            </div>
+
+            <p className="text-xs text-neutral-500">
+              No account?{" "}
+              <button onClick={openBuyPage} className="text-blue-400 hover:text-blue-300">
+                Create one / buy a license ↗
+              </button>
             </p>
-            <label className="block text-xs font-medium text-neutral-400">
-              Verification code
-              <input
-                type="text"
-                inputMode="numeric"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
-                placeholder="000000"
-                maxLength={6}
-                autoFocus
-                className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm font-mono tracking-widest text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </label>
-            <button
-              onClick={() => { setStep("form"); setOtp(""); setError(""); }}
-              className="text-xs text-neutral-500 hover:text-neutral-300"
-            >
-              ← Back / use different key
-            </button>
           </div>
         )}
 
@@ -251,24 +234,14 @@ export default function SettingsDialog({ license, onClose, onLicenseChange }: Pr
           >
             Close
           </button>
-          {!isActivated && (
-            step === "form" ? (
-              <button
-                onClick={sendCode}
-                disabled={busy}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
-              >
-                {busy ? "Sending…" : "Send verification code"}
-              </button>
-            ) : (
-              <button
-                onClick={verifyOtp}
-                disabled={busy || otp.length !== 6}
-                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
-              >
-                {busy ? "Verifying…" : "Activate"}
-              </button>
-            )
+          {!isSignedIn && (
+            <button
+              onClick={signInPassword}
+              disabled={busy}
+              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
+            >
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
           )}
         </div>
       </div>

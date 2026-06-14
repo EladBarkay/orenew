@@ -52,13 +52,11 @@ export type CanvasPreset = {
 
 export type Tier = "free" | "pro" | "studio";
 
-export type LicenseInfo = {
-  email: string;
+export type Entitlement = {
+  email: string | null;
   tier: Tier;
   expires_at: string | null; // ISO date or null (active subscription, no fixed end)
-  token: string;
-  device_id: string;
-  cached_at: string; // ISO datetime
+  last_verified: string; // ISO datetime
 };
 
 export type MagnetEvent = {

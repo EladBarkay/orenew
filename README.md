@@ -20,7 +20,7 @@ MagNet lets photographers drag in an SD card dump, pick a decorative frame PNG p
 | EXIF / XMP | `kamadak-exif` + `quick-xml` |
 | Parallelism | `rayon` (CPU-bound batch), `tokio` (async IPC) |
 | File watching | `notify` crate |
-| Licensing | Server-issued tokens, 14-day offline grace period, HMAC-SHA256 device binding |
+| Auth / entitlements | Supabase Auth (email + Google/Facebook); Rust-verified JWT (JWKS) + `entitlements` table (RLS); 14-day offline grace |
 
 ---
 
@@ -76,14 +76,17 @@ MagNet/
 │   │   ├── PrintConfirmDialog.tsx  # Frame + canvas preset pickers → print
 │   │   ├── FramePresetDialog.tsx   # Create / edit frame preset
 │   │   ├── CanvasPresetManager.tsx # List / edit / delete canvas presets
-│   │   └── SettingsDialog.tsx      # License key entry + tier display
+│   │   └── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook) + tier display
 │   ├── hooks/
 │   │   ├── useThumbnail.ts         # Fetch + cache 256px thumbnail (keyed on content_hash)
 │   │   ├── useFramedPreview.ts     # Fetch 1200px framed preview on demand
 │   │   ├── useFsWatcher.ts         # Listen for `fs-changed` Tauri events
-│   │   └── useExportProgress.ts    # Subscribe to `export-progress` Tauri events
+│   │   ├── useExportProgress.ts    # Subscribe to `export-progress` Tauri events
+│   │   └── useAuthDeepLink.ts      # Handle magnet://auth-callback OAuth deep link
 │   └── lib/
-│       └── paths.ts            # basename(), batchDisplayPath() helpers
+│       ├── paths.ts            # basename(), batchDisplayPath() helpers
+│       ├── supabase.ts         # supabase-js client (PKCE)
+│       └── auth.ts             # establishFromSession() → Rust establish_session
 │
 ├── src-tauri/
 │   ├── src/
@@ -95,7 +98,7 @@ MagNet/
 │   │   │   ├── batch.rs        # export_batch, print_photos (watermark per tier)
 │   │   │   ├── canvas_preset.rs
 │   │   │   ├── frame_preset.rs
-│   │   │   └── license.rs      # activate_init, activate_confirm, activate_dev_license, get_license_info, clear_license
+│   │   │   └── auth.rs         # establish_session, get_entitlement, sign_out
 │   │   ├── photo/              # Core image engine — zero Tauri deps, fully unit-tested
 │   │   │   ├── loader.rs       # load_photo(), read_exif_orientation(), compute_content_hash()
 │   │   │   ├── orientation.rs  # detect_orientation() — pixel dims + user override
@@ -111,10 +114,11 @@ MagNet/
 │   │   ├── preview/
 │   │   │   ├── thumbnail.rs    # 256px disk cache at {app_cache}/thumbs/{sha256}.jpg
 │   │   │   └── framed_preview.rs  # On-demand 1200px Rust renderer
-│   │   ├── license/
-│   │   │   ├── validator.rs    # LicenseInfo cache (load/save), device-ID binding, grace period check
-│   │   │   ├── client.rs       # HTTP activation (activate_init/confirm, revalidate, deactivate)
-│   │   │   └── device.rs       # Hardware-stable device fingerprint via machine-uid
+│   │   ├── auth/
+│   │   │   ├── entitlement.rs  # Tier + Entitlement cache, grace period + expiry check
+│   │   │   ├── session.rs      # session.json (Supabase refresh token) load/save
+│   │   │   ├── jwt.rs          # verify Supabase access token against JWKS
+│   │   │   └── client.rs       # token refresh + entitlement fetch (PostgREST + RLS)
 │   │   └── watcher/
 │   │       └── fs_watcher.rs   # notify watcher → emits `fs-changed` Tauri event
 │   ├── .cargo/config.toml      # Windows: rust-lld linker + /DEBUG:FASTLINK
@@ -139,7 +143,8 @@ Photos are **never written or modified**. All app state is stored internally:
 {app_data}/
   events/{event_id}/magnet.json   # event metadata, presets, print counts
   thumbs/{sha256}.jpg             # thumbnail cache
-  license.json
+  session.json                    # Supabase session (refresh token)
+  entitlement.json                # cached tier + expiry (14-day offline grace)
 ```
 
 When you open a folder, the app matches it against `source_path` in existing `magnet.json` files to resume an event, or creates a new one automatically.
@@ -190,16 +195,31 @@ Batch runs on a **4-thread rayon pool** (memory ceiling ~400 MB for 24 MP photos
 - Frame PNG path → clears the Rust preview cache for that preset + bumps a nonce to force re-fetch
 - Any other path → calls `refresh_batch` IPC, which recomputes `content_hash` values and resets `print_count` for changed photos
 
-### Licensing
+### Auth & Entitlements (Supabase)
 
-Activation flow: email + license key → server sends OTP → OTP confirmed → `license.json` written to `{app_data}/`.
+Sign-in flow: email+password or Google/Facebook via Supabase Auth. The frontend
+(`supabase-js`) only drives the interactive login, then hands the session
+(`access_token` / `refresh_token` / `expires_at`) to Rust via `establish_session`.
 
 - **Free tier**: output canvases get a procedural diagonal-stripe watermark composited at export/print time. No other limits.
-- **Pro / Studio tiers**: no watermark; tier is server-issued and cached locally.
+- **Pro / Studio tiers**: no watermark; tier comes from the user's `entitlements` row in Supabase.
 
-The cached license is bound to the device via a hardware fingerprint (`machine-uid`). If the device ID in `license.json` doesn't match, the file is rejected. Offline use is allowed for **14 days** after the last successful server revalidation; after that the license is cleared and the app falls back to Free.
+**Rust is the source of truth for tier.** It verifies the access-token JWT against
+Supabase's public JWKS (asymmetric keys — no secret in the binary), then reads the
+`entitlements` row over PostgREST with the bearer token (Row-Level Security returns
+only the caller's row). Session + entitlement are cached to `session.json` /
+`entitlement.json`. Offline use is allowed for **14 days** from the last successful
+verification; after that the app falls back to Free.
 
-Background revalidation runs at startup (and retries every 60 s if the server was unreachable). A `tier-changed` or `license-expired` Tauri event is emitted when the result differs from the cached state.
+OAuth uses PKCE and returns through the custom deep link `magnet://auth-callback`
+(`tauri-plugin-deep-link`). Google/Meta only ever see Supabase's HTTPS callback,
+never the custom scheme.
+
+A background refresh runs at startup (retries every 60 s if offline): refresh
+token → verify → re-fetch entitlement → emit `tier-changed`; if the grace window
+lapses it clears the caches and emits `license-expired`.
+
+See [`docs/supabase.md`](docs/supabase.md) for project setup and the SQL migration.
 
 ---
 
@@ -215,7 +235,7 @@ Background revalidation runs at startup (and retries every 60 s if the server wa
 **Rust tests** (run from `src-tauri/`):
 
 ```bash
-cargo test                                         # unit tests: crop, model, license
+cargo test                                         # unit tests: crop, model, auth (jwt/entitlement)
 cargo test --release -- --ignored perf             # perf guard: asserts <100ms/photo
 ```
 
@@ -223,11 +243,20 @@ cargo test --release -- --ignored perf             # perf guard: asserts <100ms/
 
 ## Environment Variables
 
+Backend (baked in at `cargo build` via `build.rs` — override with real env vars):
+
 | Variable | Purpose | Default |
 |---|---|---|
-| `MAGNET_LICENSE_SECRET` | HMAC secret baked into binary at `cargo build`. **Change before any production build.** | `"dev-secret-change-in-prod"` |
-| `MAGNET_DEV_EMAIL` | Developer bypass email — activates Pro instantly, no OTP, no server call. | `eladb1231@gmail.com` |
-| `MAGNET_DEV_KEY` | Developer bypass key — pair with `MAGNET_DEV_EMAIL` in Settings to activate. | `DEV-MAGNET-PRO` |
+| `SUPABASE_URL` | Supabase project URL. | `https://YOUR_PROJECT_REF.supabase.co` |
+| `SUPABASE_ANON_KEY` | Supabase anon key (public, safe to ship). | `YOUR_SUPABASE_ANON_KEY` |
+| `MAGNET_DEV_TIER` | Developer bypass — `pro` or `studio` seeds that tier with no sign-in. Unset = normal auth. | _(unset)_ |
+
+Frontend (read via `import.meta.env`, see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL. |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key. |
 
 ---
 

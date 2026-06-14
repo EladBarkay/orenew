@@ -4,7 +4,7 @@ mod project;
 mod preview;
 mod canvas;
 mod watcher;
-mod license;
+mod auth;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,28 +12,33 @@ use std::sync::{Arc, Mutex};
 use project::persistence::EventStore;
 use preview::thumbnail::ThumbnailCache;
 use watcher::fs_watcher::FsWatcher;
-use license::validator::{LicenseInfo, Tier};
+use auth::entitlement::{Entitlement, Tier};
+use auth::session::Session;
+use auth::AuthState;
 use uuid::Uuid;
+
+/// Compile-time dev bypass: `MAGNET_DEV_TIER=pro` (or `studio`) seeds a synthetic
+/// entitlement so the app runs at that tier without a real sign-in.
+const DEV_TIER: Option<&str> = option_env!("MAGNET_DEV_TIER");
 
 pub struct AppState {
     pub store: EventStore,
     pub thumbs: ThumbnailCache,
     pub app_data_dir: PathBuf,
-    pub device_id: String,
     pub watcher: Mutex<FsWatcher>,
-    /// Currently active license, if any. `None` => Free tier.
-    pub license: Mutex<Option<LicenseInfo>>,
+    /// Current auth state (session + entitlement). `None` => signed out / Free.
+    pub auth: Mutex<Option<AuthState>>,
     /// Framed preview cache keyed by (photo_id, preset_id).
     pub preview_cache: Arc<Mutex<HashMap<(Uuid, Uuid), Vec<u8>>>>,
 }
 
 impl AppState {
-    /// Effective tier — Free unless a valid Pro/Studio license is active.
+    /// Effective tier — Free unless a valid Pro/Studio entitlement is active.
     pub fn tier(&self) -> Tier {
-        self.license
+        self.auth
             .lock()
             .ok()
-            .and_then(|g| g.as_ref().map(|l| l.tier.clone()))
+            .and_then(|g| g.as_ref().map(|a| a.entitlement.effective_tier()))
             .unwrap_or(Tier::Free)
     }
 
@@ -43,6 +48,29 @@ impl AppState {
     }
 }
 
+/// Build the synthetic auth state for the compile-time dev bypass, if configured.
+fn dev_auth_state() -> Option<AuthState> {
+    let tier = match DEV_TIER {
+        Some("pro") => Tier::Pro,
+        Some("studio") => Tier::Studio,
+        _ => return None,
+    };
+    Some(AuthState {
+        session: Session {
+            access_token: String::new(),
+            refresh_token: AuthState::DEV_REFRESH_TOKEN.to_string(),
+            expires_at: 0,
+            user_id: "dev".to_string(),
+        },
+        entitlement: Entitlement {
+            email: Some("dev@magnet.app".to_string()),
+            tier,
+            expires_at: None,
+            last_verified: chrono::Utc::now(),
+        },
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -50,14 +78,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             use tauri::{Emitter, Manager};
 
             let data_dir = app.path().app_data_dir().expect("app_data_dir");
             std::fs::create_dir_all(&data_dir).expect("create app_data_dir");
-
-            let device_id = license::device::get_or_create(&data_dir)
-                .expect("device ID init");
 
             let store = EventStore::new(data_dir.join("events"))
                 .expect("EventStore init");
@@ -69,24 +95,29 @@ pub fn run() {
                 let _ = app_handle.emit("fs-changed", path.to_string_lossy().to_string());
             }).expect("FsWatcher init");
 
-            let license_path = data_dir.join("license.json");
-            let cached = license::validator::load_cached(&license_path, &device_id);
+            // Dev bypass takes precedence; otherwise load cached session + entitlement.
+            let initial_auth = dev_auth_state().or_else(|| {
+                let session = auth::session::load_cached(&data_dir.join("session.json"))?;
+                let entitlement =
+                    auth::entitlement::load_cached(&data_dir.join("entitlement.json"))
+                        .unwrap_or_else(Entitlement::free);
+                Some(AuthState { session, entitlement })
+            });
 
             app.manage(AppState {
                 store,
                 thumbs,
                 app_data_dir: data_dir.clone(),
-                device_id: device_id.clone(),
                 watcher: Mutex::new(fs_watcher),
-                license: Mutex::new(cached),
+                auth: Mutex::new(initial_auth),
                 preview_cache: Arc::new(Mutex::new(HashMap::new())),
             });
 
-            // Background task: revalidate on startup, then retry every 60s until
-            // either the server responds or there's no license to revalidate.
+            // Background task: refresh the session on startup, then retry every
+            // 60s until the server responds or there's no session to refresh.
             let app_handle_bg = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                revalidation_loop(app_handle_bg, license_path).await;
+                auth_refresh_loop(app_handle_bg).await;
             });
 
             Ok(())
@@ -115,24 +146,23 @@ pub fn run() {
             commands::frame_preset::update_frame_preset,
             commands::frame_preset::delete_frame_preset,
             commands::project::open_in_explorer,
-            commands::license::activate_init,
-            commands::license::activate_confirm,
-            commands::license::activate_dev_license,
-            commands::license::get_license_info,
-            commands::license::clear_license,
+            commands::auth::establish_session,
+            commands::auth::get_entitlement,
+            commands::auth::sign_out,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-/// Attempts to revalidate the cached license with the server.
+/// Refreshes the cached session with Supabase and re-fetches the entitlement.
 /// - First attempt is immediate (handles startup-while-online case).
 /// - Retries every 60s (handles launch-offline-then-connect case).
-/// - Stops after a server response (success or revoked) or if there's no license.
-async fn revalidation_loop(app: tauri::AppHandle, license_path: PathBuf) {
+/// - Stops after a successful refresh, an explicit rejection, or if there's no
+///   session (or the dev bypass) loaded.
+async fn auth_refresh_loop(app: tauri::AppHandle) {
     use tauri::{Emitter, Manager};
-    use license::client::RevalidateResult;
-    use license::validator::save_cached;
+    use auth::entitlement::save_cached as save_entitlement;
+    use auth::session::save_cached as save_session;
 
     let mut attempts: u32 = 0;
 
@@ -143,52 +173,60 @@ async fn revalidation_loop(app: tauri::AppHandle, license_path: PathBuf) {
         attempts += 1;
 
         let state = app.state::<AppState>();
+        let data_dir = state.app_data_dir.clone();
 
-        let existing = {
-            state.license.lock().ok().and_then(|g| g.clone())
-        };
+        let existing = { state.auth.lock().ok().and_then(|g| g.clone()) };
 
         let Some(existing) = existing else {
-            // No license loaded — nothing to revalidate.
+            // Nothing signed in — nothing to refresh.
             break;
         };
 
-        // Dev license: skip server revalidation entirely.
-        if existing.token == "dev-token" {
+        // Dev bypass: never hits the network.
+        if existing.is_dev() {
             break;
         }
 
-        match license::client::revalidate(&existing).await {
-            RevalidateResult::Ok(updated) => {
-                let _ = save_cached(&license_path, &updated);
-                if let Ok(mut guard) = state.license.lock() {
-                    *guard = Some(updated);
-                }
-                let _ = app.emit("tier-changed", ());
-                break; // Done for this session.
-            }
-            RevalidateResult::Revoked => {
-                let _ = std::fs::remove_file(&license_path);
-                if let Ok(mut guard) = state.license.lock() {
-                    *guard = None;
-                }
-                let _ = app.emit("tier-changed", ());
-                break;
-            }
-            RevalidateResult::Unreachable => {
-                if attempts == 1 {
-                    // Startup attempt failed — apply grace period check.
-                    if !existing.is_grace_period_valid() {
-                        let _ = std::fs::remove_file(&license_path);
-                        if let Ok(mut guard) = state.license.lock() {
-                            *guard = None;
-                        }
-                        let _ = app.emit("license-expired", ());
-                        break;
+        // 1. Refresh the access token.
+        let session = match auth::client::refresh(&existing.session.refresh_token).await {
+            Ok(s) => s,
+            Err(_) => {
+                // Unreachable or rejected. On the startup attempt, apply the
+                // offline grace check; if it's lapsed, fall back to Free.
+                if attempts == 1 && !existing.entitlement.is_grace_period_valid() {
+                    let _ = std::fs::remove_file(data_dir.join("session.json"));
+                    let _ = std::fs::remove_file(data_dir.join("entitlement.json"));
+                    if let Ok(mut guard) = state.auth.lock() {
+                        *guard = None;
                     }
+                    let _ = app.emit("license-expired", ());
+                    break;
                 }
-                // Stay on cached tier; connectivity watcher retries in 60s.
+                // Stay on cached tier; retry in 60s.
+                continue;
             }
+        };
+
+        // 2. Verify the freshly minted access token.
+        let claims = match auth::jwt::verify(&session.access_token).await {
+            Ok(c) => c,
+            Err(_) => continue, // JWKS unreachable etc. — keep cached tier, retry.
+        };
+
+        // 3. Re-fetch the entitlement.
+        let entitlement =
+            match auth::client::fetch_entitlement(&session.access_token, claims.email.clone()).await
+            {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+        let _ = save_session(&data_dir.join("session.json"), &session);
+        let _ = save_entitlement(&data_dir.join("entitlement.json"), &entitlement);
+        if let Ok(mut guard) = state.auth.lock() {
+            *guard = Some(AuthState { session, entitlement });
         }
+        let _ = app.emit("tier-changed", ());
+        break; // Done for this session.
     }
 }

@@ -1,9 +1,9 @@
-import { LicenseInfo, MagnetEvent, PhotoBatch } from "../types";
+import { Entitlement, MagnetEvent, PhotoBatch } from "../types";
 import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 
 type Props = {
   event: MagnetEvent | null;
-  license: LicenseInfo | null;
+  entitlement: Entitlement | null;
   status: string;
   totalPhotos: number;
   activeBatch: PhotoBatch | null;
@@ -19,10 +19,10 @@ type Props = {
 };
 
 export default function Toolbar({
-  event, license, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
+  event, entitlement, status, totalPhotos, activeBatch, queuedTotal, allQty, cellSize,
   onOpenEvent, onDeleteEvent, onProcess, onSettings, onSetAllQty, onCellSizeChange,
 }: Props) {
-  const tier = license?.tier ?? "free";
+  const tier = entitlement?.tier ?? "free";
   const tierLabel = tier === "studio" ? "Studio" : tier === "pro" ? "Pro" : "Free";
   const tierColor = tier === "studio"
     ? "bg-purple-700/80 text-white"
