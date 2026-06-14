@@ -12,9 +12,10 @@ type Props = {
   photoQueue: Record<string, number>;
   onQtyDelta: (photoId: string, delta: number) => void;
   cellSize?: number;
+  onColCountChange?: (n: number) => void;
 };
 
-export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQtyDelta, cellSize = 168 }: Props) {
+export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const cellStride = cellSize + GAP;
@@ -31,6 +32,10 @@ export default function Gallery({ photos, selectedId, onSelect, photoQueue, onQt
   }, []);
 
   const colCount = Math.max(1, Math.floor((size.width + GAP) / cellStride));
+
+  useEffect(() => {
+    onColCountChange?.(colCount);
+  }, [colCount, onColCountChange]);
   const rowCount = Math.ceil(photos.length / colCount);
 
   const Cell = useCallback(

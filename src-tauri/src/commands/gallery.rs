@@ -67,6 +67,19 @@ pub async fn set_orientation_override(
 }
 
 #[tauri::command]
+pub async fn clear_orientation_override(
+    event_id: Uuid,
+    photo_id: Uuid,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
+    find_photo_mut(&mut event, photo_id)?.orientation_override = None;
+    state.store.save(&event).map_err(|e| e.to_string())?;
+    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn set_crop_override(
     event_id: Uuid,
     photo_id: Uuid,

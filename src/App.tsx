@@ -31,6 +31,7 @@ export default function App() {
   const [cellSize, setCellSize] = useState(168);
   const [previewWidth, setPreviewWidth] = useState(288);
   const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const colCountRef = useRef(1);
 
   useEffect(() => {
     invoke<LicenseInfo | null>("get_license_info")
@@ -212,13 +213,16 @@ export default function App() {
   useEffect(() => {
     if (!selected) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
         const idx = photos.findIndex((p) => p.id === selected.id);
         if (idx < 0) return;
-        const next = e.key === "ArrowRight"
-          ? Math.min(photos.length - 1, idx + 1)
-          : Math.max(0, idx - 1);
+        const cols = colCountRef.current;
+        let next = idx;
+        if (e.key === "ArrowRight") next = Math.min(photos.length - 1, idx + 1);
+        else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
+        else if (e.key === "ArrowDown") next = Math.min(photos.length - 1, idx + cols);
+        else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
         setSelected(photos[next]);
       }
       if (e.key === "Escape") setSelected(null);
@@ -254,6 +258,27 @@ export default function App() {
       await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
       const updatePhoto = (p: Photo): Photo =>
         p.id === photoId ? { ...p, orientation_override: orientation } : p;
+      const updatedEvent = {
+        ...event,
+        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
+      };
+      setEvent(updatedEvent);
+      if (activeBatch) {
+        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
+        if (refreshedBatch) setActiveBatch(refreshedBatch);
+      }
+      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  }
+
+  async function handleClearOrientationOverride(photoId: string) {
+    if (!event) return;
+    try {
+      await invoke("clear_orientation_override", { eventId: event.id, photoId });
+      const updatePhoto = (p: Photo): Photo =>
+        p.id === photoId ? { ...p, orientation_override: null } : p;
       const updatedEvent = {
         ...event,
         batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
@@ -359,6 +384,7 @@ export default function App() {
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
               cellSize={cellSize}
+              onColCountChange={(n) => { colCountRef.current = n; }}
             />
             {selected && (
               <>
@@ -372,6 +398,7 @@ export default function App() {
                   onClose={() => setSelected(null)}
                   frameNonce={frameNonce}
                   onOrientationOverride={handleOrientationOverride}
+                  onClearOrientationOverride={handleClearOrientationOverride}
                   width={previewWidth}
                 />
               </>
