@@ -1,8 +1,11 @@
+use chrono::Utc;
 use tauri::State;
-use crate::license::{client, validator::{LicenseInfo, save_cached}};
+use crate::license::{client, validator::{LicenseInfo, Tier, save_cached}};
 use crate::AppState;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const DEV_EMAIL: &str = env!("MAGNET_DEV_EMAIL");
+const DEV_KEY: &str = env!("MAGNET_DEV_KEY");
 
 /// Step 1 — validate email + key, send OTP to the user's email.
 /// Returns an opaque `challenge_id` to pass to `activate_confirm`.
@@ -45,6 +48,36 @@ pub async fn get_license_info(
     state: State<'_, AppState>,
 ) -> Result<Option<LicenseInfo>, String> {
     Ok(state.license.lock().ok().and_then(|g| g.clone()))
+}
+
+/// Activate a built-in developer license (Pro tier, no server required).
+/// Only works when email + key match the compile-time DEV_EMAIL / DEV_KEY constants.
+#[tauri::command]
+pub async fn activate_dev_license(
+    email: String,
+    key: String,
+    state: State<'_, AppState>,
+) -> Result<LicenseInfo, String> {
+    if email != DEV_EMAIL || key != DEV_KEY {
+        return Err("Invalid dev credentials".to_string());
+    }
+
+    let info = LicenseInfo {
+        email,
+        tier: Tier::Pro,
+        expires_at: None,
+        token: "dev-token".to_string(),
+        device_id: state.device_id.clone(),
+        cached_at: Utc::now(),
+    };
+
+    let path = state.app_data_dir.join("license.json");
+    save_cached(&path, &info).map_err(|e| e.to_string())?;
+
+    if let Ok(mut guard) = state.license.lock() {
+        *guard = Some(info.clone());
+    }
+    Ok(info)
 }
 
 /// Deactivate this device (frees a seat) and remove the local license cache.
