@@ -6,7 +6,7 @@ use uuid::Uuid;
 use serde::Serialize;
 use crate::commands::IntoTauri;
 use crate::photo::batch::{prepare_frames, PreparedFrames};
-use crate::project::model::{FramePreset, Photo};
+use crate::project::model::{CanvasPreset, Event, FramePreset, Photo};
 use crate::AppState;
 
 #[derive(Serialize, Clone)]
@@ -60,13 +60,64 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
 
 /// Collect photos in canonical event order (batch order → photo order within batch)
 /// for the given quantity map. Keys of `quantities` determine which photos are included.
-fn collect_selected(event: &crate::project::model::Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
+fn collect_selected(event: &Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
     event
         .batches.iter()
         .flat_map(|b| &b.photos)
         .filter(|p| quantities.contains_key(&p.id))
         .cloned()
         .collect()
+}
+
+/// Everything an export/print run needs once the event is loaded — shared by both
+/// `export_batch` and `print_photos`, which differ only in how they emit output.
+struct PreparedBatch {
+    photos: Vec<Photo>,
+    canvas_preset: CanvasPreset,
+    frame_preset: FramePreset,
+    frames: PreparedFrames,
+    watermark: bool,
+    slot_w: u32,
+    slot_h: u32,
+}
+
+/// Resolve presets, expand the quantity map (using `default_qty` for photos with
+/// no explicit entry), validate non-empty, and load+prepare the frames once.
+fn prepare_batch(
+    event: &Event,
+    quantities: &HashMap<Uuid, u32>,
+    frame_preset_id: Uuid,
+    canvas_preset_id: Uuid,
+    default_qty: u32,
+    watermark: bool,
+) -> Result<PreparedBatch, String> {
+    let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
+    let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
+
+    let selected = collect_selected(event, quantities);
+    let photos = expand_by_quantity(&selected, |p| {
+        quantities.get(&p.id).copied().unwrap_or(default_qty)
+    });
+    if photos.is_empty() {
+        return Err("No photos queued — set quantities on gallery photos first".into());
+    }
+
+    let slot_w = canvas_preset.slot_width();
+    let slot_h = canvas_preset.slot_height();
+    let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
+
+    Ok(PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h })
+}
+
+/// Add each photo's queued quantity to one of its counters (`field` selects which).
+fn bump_counts(event: &mut Event, quantities: &HashMap<Uuid, u32>, field: fn(&mut Photo) -> &mut u32) {
+    for batch in &mut event.batches {
+        for photo in &mut batch.photos {
+            if let Some(&qty) = quantities.get(&photo.id) {
+                *field(photo) += qty;
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -80,29 +131,19 @@ pub async fn export_batch(
 ) -> Result<(), String> {
     let event = state.store.load(event_id).tauri()?;
 
-    let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
-    let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
+    let PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h } =
+        prepare_batch(&event, &quantities, frame_preset_id, canvas_preset_id, 0, state.watermark())?;
+
     let output_root = event
         .output_folder.as_ref()
         .ok_or("no output folder configured — set one in event settings")?
         .clone();
-
-    let selected = collect_selected(&event, &quantities);
-    let photos = expand_by_quantity(&selected, |p| quantities.get(&p.id).copied().unwrap_or(0));
-
-    if photos.is_empty() {
-        return Err("No photos queued for export — set quantities on gallery photos first".into());
-    }
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let output_dir = output_root.join(&timestamp);
     std::fs::create_dir_all(&output_dir).tauri()?;
 
     let output_dir_clone = output_dir.clone();
-    let slot_w = canvas_preset.slot_width();
-    let slot_h = canvas_preset.slot_height();
-    let watermark = state.watermark();
-    let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
     let store = state.store.clone();
 
     // Background thread — does not block the IPC handler
@@ -161,15 +202,7 @@ pub async fn export_batch(
 
         // Increment export_count for all exported photos
         if let Ok(mut evt) = store.load(event_id) {
-            for batch in &mut evt.batches {
-                for photo in &mut batch.photos {
-                    if let Some(&qty) = quantities.get(&photo.id) {
-                        if qty > 0 {
-                            photo.export_count += qty;
-                        }
-                    }
-                }
-            }
+            bump_counts(&mut evt, &quantities, |p| &mut p.export_count);
             let _ = store.save(&evt);
         }
 
@@ -191,21 +224,8 @@ pub async fn print_photos(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     let mut event = state.store.load(event_id).tauri()?;
-    let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
-    let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
-
-    let watermark = state.watermark();
-
-    let selected = collect_selected(&event, &quantities);
-    let photos = expand_by_quantity(&selected, |p| quantities.get(&p.id).copied().unwrap_or(1));
-
-    if photos.is_empty() {
-        return Err("no photos selected".into());
-    }
-
-    let slot_w = canvas_preset.slot_width();
-    let slot_h = canvas_preset.slot_height();
-    let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
+    let PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h } =
+        prepare_batch(&event, &quantities, frame_preset_id, canvas_preset_id, 1, state.watermark())?;
 
     let framed: Vec<_> = run_bounded(|| {
         photos
@@ -233,13 +253,7 @@ pub async fn print_photos(
         paths.push(p);
     }
 
-    for batch in &mut event.batches {
-        for photo in &mut batch.photos {
-            if let Some(&qty) = quantities.get(&photo.id) {
-                photo.print_count += qty;
-            }
-        }
-    }
+    bump_counts(&mut event, &quantities, |p| &mut p.print_count);
     state.store.save(&event).tauri()?;
 
     Ok(paths.len())
