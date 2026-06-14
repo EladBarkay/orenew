@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { EVENTS } from "../constants";
 
 export type ExportProgress = {
   done: number;
@@ -17,10 +18,10 @@ export function useExportProgress() {
   const [result, setResult] = useState<ExportResult | null>(null);
 
   useEffect(() => {
-    const p = listen<ExportProgress>("export-progress", (e) =>
+    const p = listen<ExportProgress>(EVENTS.EXPORT_PROGRESS, (e) =>
       setProgress(e.payload)
     );
-    const c = listen<ExportResult>("export-complete", (e) => {
+    const c = listen<ExportResult>(EVENTS.EXPORT_COMPLETE, (e) => {
       setProgress(null);
       setResult(e.payload);
     });

@@ -5,6 +5,7 @@ import { Entitlement } from "../types";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
 import { tierLabel, tierColor } from "../lib/tiers";
+import { EVENTS } from "../constants";
 import { Modal } from "./ui";
 
 type Props = {
@@ -26,13 +27,13 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
 
   // Background refresh resolved a new tier — refetch the cached entitlement.
   useEffect(() => {
-    const unsub = listen<void>("tier-changed", async () => {
+    const unsub = listen<void>(EVENTS.TIER_CHANGED, async () => {
       try {
         const info = await invoke<Entitlement | null>("get_entitlement");
         onEntitlementChange(info ?? null);
       } catch {}
     });
-    const unsub2 = listen<void>("license-expired", () => onEntitlementChange(null));
+    const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => onEntitlementChange(null));
     return () => { unsub.then((fn) => fn()); unsub2.then((fn) => fn()); };
   }, [onEntitlementChange]);
 

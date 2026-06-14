@@ -13,6 +13,7 @@ import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
 import { reorderById } from "./lib/reorder";
+import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
 
 type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
@@ -43,13 +44,13 @@ export default function App() {
 
   // Background refresh: update entitlement when the background task resolves.
   useEffect(() => {
-    const unsub = listen<void>("tier-changed", async () => {
+    const unsub = listen<void>(EVENTS.TIER_CHANGED, async () => {
       try {
         const info = await invoke<Entitlement | null>("get_entitlement");
         setEntitlement(info ?? null);
       } catch {}
     });
-    const unsub2 = listen<void>("license-expired", () => setEntitlement(null));
+    const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => setEntitlement(null));
     return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
   }, []);
 
