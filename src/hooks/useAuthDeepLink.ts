@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
 import type { Entitlement } from "../types";
 
-/// Handles the OAuth deep-link callback `magnet://auth-callback?code=…`:
+/// Handles the OAuth deep-link callback `magnetapp://auth-callback?code=…`:
 /// exchanges the PKCE code for a Supabase session, then hands it to Rust.
 export function useAuthDeepLink(onEntitlement: (e: Entitlement) => void) {
   useEffect(() => {
@@ -12,7 +12,7 @@ export function useAuthDeepLink(onEntitlement: (e: Entitlement) => void) {
 
     async function handle(urls: string[]) {
       for (const raw of urls) {
-        if (!raw.startsWith("magnet://auth-callback")) continue;
+        if (!raw.startsWith("magnetapp://auth-callback")) continue;
         try {
           const code = new URL(raw).searchParams.get("code");
           if (!code) continue;

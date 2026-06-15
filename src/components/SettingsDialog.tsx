@@ -60,7 +60,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: "magnet://auth-callback",
+          redirectTo: "magnetapp://auth-callback",
           skipBrowserRedirect: true,
         },
       });
