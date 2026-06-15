@@ -182,7 +182,7 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
 
 /// Merge a re-scanned photo list into the existing batch, preserving user data.
 /// - Same path + same hash → keep existing (print_count, overrides)
-/// - Same path + changed hash → reset print_count, keep orientation/crop overrides
+/// - Same path + changed hash → reset print_count + crop_override; keep orientation override
 /// - New path → add
 /// - Path no longer present → drop
 fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> Vec<Photo> {
@@ -197,7 +197,9 @@ fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> Vec<Photo> {
             Some(old) if old.content_hash == new_p.content_hash => old,
             Some(old) => Photo {
                 orientation_override: old.orientation_override,
-                crop_override: old.crop_override,
+                // crop_override stores pixel coordinates specific to the old image's
+                // dimensions; clearing it prevents out-of-bounds crops if the
+                // replacement photo has a different resolution.
                 print_count: 0,
                 ..new_p
             },
