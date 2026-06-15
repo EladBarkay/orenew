@@ -5,6 +5,8 @@ mod preview;
 mod canvas;
 mod watcher;
 mod auth;
+mod json_store;
+mod constants;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -45,6 +47,16 @@ impl AppState {
     /// Whether output canvases should be watermarked (Free tier only).
     pub fn watermark(&self) -> bool {
         matches!(self.tier(), Tier::Free)
+    }
+
+    /// Drop cached framed previews that use the given frame preset.
+    pub fn invalidate_preview_for_preset(&self, preset_id: Uuid) {
+        self.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+    }
+
+    /// Drop cached framed previews for the given photo across all presets.
+    pub fn invalidate_preview_for_photo(&self, photo_id: Uuid) {
+        self.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
     }
 }
 
@@ -92,7 +104,7 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             let fs_watcher = FsWatcher::new(move |path: PathBuf| {
-                let _ = app_handle.emit("fs-changed", path.to_string_lossy().to_string());
+                let _ = app_handle.emit(constants::events::FS_CHANGED, path.to_string_lossy().to_string());
             }).expect("FsWatcher init");
 
             // Dev bypass takes precedence; otherwise load cached session + entitlement.
@@ -136,7 +148,6 @@ pub fn run() {
             commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,
             commands::gallery::clear_orientation_override,
-            commands::gallery::set_crop_override,
             commands::batch::export_batch,
             commands::batch::print_photos,
             commands::canvas_preset::create_canvas_preset,
@@ -199,7 +210,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                     if let Ok(mut guard) = state.auth.lock() {
                         *guard = None;
                     }
-                    let _ = app.emit("license-expired", ());
+                    let _ = app.emit(constants::events::LICENSE_EXPIRED, ());
                     break;
                 }
                 // Stay on cached tier; retry in 60s.
@@ -226,7 +237,7 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
         if let Ok(mut guard) = state.auth.lock() {
             *guard = Some(AuthState { session, entitlement });
         }
-        let _ = app.emit("tier-changed", ());
+        let _ = app.emit(constants::events::TIER_CHANGED, ());
         break; // Done for this session.
     }
 }

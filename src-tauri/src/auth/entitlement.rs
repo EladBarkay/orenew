@@ -1,3 +1,4 @@
+use crate::json_store::{load_json, save_json};
 use anyhow::Result;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -55,18 +56,12 @@ impl Entitlement {
 
 /// Load the cached entitlement from disk. Returns `None` if missing/unparseable.
 pub fn load_cached(path: &Path) -> Option<Entitlement> {
-    let data = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&data).ok()
+    load_json(path).ok()
 }
 
 /// Persist the entitlement to `entitlement.json`.
 pub fn save_cached(path: &Path, ent: &Entitlement) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let data = serde_json::to_string_pretty(ent)?;
-    std::fs::write(path, data)?;
-    Ok(())
+    save_json(path, ent)
 }
 
 #[cfg(test)]

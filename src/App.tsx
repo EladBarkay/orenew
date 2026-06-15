@@ -12,6 +12,8 @@ import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
+import { reorderById } from "./lib/reorder";
+import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
 
 type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
@@ -42,13 +44,13 @@ export default function App() {
 
   // Background refresh: update entitlement when the background task resolves.
   useEffect(() => {
-    const unsub = listen<void>("tier-changed", async () => {
+    const unsub = listen<void>(EVENTS.TIER_CHANGED, async () => {
       try {
         const info = await invoke<Entitlement | null>("get_entitlement");
         setEntitlement(info ?? null);
       } catch {}
     });
-    const unsub2 = listen<void>("license-expired", () => setEntitlement(null));
+    const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => setEntitlement(null));
     return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
   }, []);
 
@@ -125,27 +127,19 @@ export default function App() {
   }
 
   function reorderBatch(targetId: string) {
-    if (!event || !draggedBatchId || draggedBatchId === targetId) return;
-    const batches = [...event.batches];
-    const fromIdx = batches.findIndex((b) => b.id === draggedBatchId);
-    const toIdx = batches.findIndex((b) => b.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = batches.splice(fromIdx, 1);
-    batches.splice(toIdx, 0, moved);
+    if (!event) return;
+    const batches = reorderById(event.batches, draggedBatchId, targetId);
+    if (!batches) return;
     const updated = { ...event, batches };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
   function reorderFramePreset(targetId: string) {
-    if (!event || !draggedFrameId || draggedFrameId === targetId) return;
-    const presets = [...event.frame_presets];
-    const fromIdx = presets.findIndex((p) => p.id === draggedFrameId);
-    const toIdx = presets.findIndex((p) => p.id === targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = presets.splice(fromIdx, 1);
-    presets.splice(toIdx, 0, moved);
-    const updated = { ...event, frame_presets: presets };
+    if (!event) return;
+    const frame_presets = reorderById(event.frame_presets, draggedFrameId, targetId);
+    if (!frame_presets) return;
+    const updated = { ...event, frame_presets };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
@@ -256,33 +250,18 @@ export default function App() {
     setPhotoQueue(q);
   }
 
-  async function handleOrientationOverride(photoId: string, orientation: Orientation) {
+  // Set (or clear, with `null`) a photo's orientation override and mirror the
+  // change into event/activeBatch/selected state.
+  async function setOrientation(photoId: string, orientation: Orientation | null) {
     if (!event) return;
     try {
-      await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+      if (orientation) {
+        await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+      } else {
+        await invoke("clear_orientation_override", { eventId: event.id, photoId });
+      }
       const updatePhoto = (p: Photo): Photo =>
         p.id === photoId ? { ...p, orientation_override: orientation } : p;
-      const updatedEvent = {
-        ...event,
-        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
-      };
-      setEvent(updatedEvent);
-      if (activeBatch) {
-        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
-        if (refreshedBatch) setActiveBatch(refreshedBatch);
-      }
-      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
-    } catch (e) {
-      setStatus(`Error: ${e}`);
-    }
-  }
-
-  async function handleClearOrientationOverride(photoId: string) {
-    if (!event) return;
-    try {
-      await invoke("clear_orientation_override", { eventId: event.id, photoId });
-      const updatePhoto = (p: Photo): Photo =>
-        p.id === photoId ? { ...p, orientation_override: null } : p;
       const updatedEvent = {
         ...event,
         batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
@@ -401,8 +380,8 @@ export default function App() {
                   photo={selected}
                   onClose={() => setSelected(null)}
                   frameNonce={frameNonce}
-                  onOrientationOverride={handleOrientationOverride}
-                  onClearOrientationOverride={handleClearOrientationOverride}
+                  onOrientationOverride={(id, o) => setOrientation(id, o)}
+                  onClearOrientationOverride={(id) => setOrientation(id, null)}
                   width={previewWidth}
                 />
               </>

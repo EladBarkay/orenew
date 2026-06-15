@@ -1,6 +1,7 @@
 use tauri::State;
 use uuid::Uuid;
-use crate::project::model::{CropRect, Orientation};
+use crate::commands::IntoTauri;
+use crate::project::model::Orientation;
 use crate::AppState;
 
 #[tauri::command]
@@ -9,7 +10,7 @@ pub async fn get_thumbnail(
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
     let path = std::path::PathBuf::from(&photo_path);
-    state.thumbs.get_or_generate(&path).map_err(|e| e.to_string())
+    state.thumbs.get_or_generate(&path).tauri()
 }
 
 #[tauri::command]
@@ -23,15 +24,11 @@ pub async fn get_framed_preview(
     if let Some(cached) = state.preview_cache.lock().unwrap().get(&(photo_id, preset_id)).cloned() {
         return Ok(cached);
     }
-    let event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    let photo = find_photo(&event, photo_id)?;
-    let preset = event
-        .frame_presets
-        .iter()
-        .find(|p| p.id == preset_id)
-        .ok_or_else(|| format!("preset {preset_id} not found"))?;
+    let event = state.store.load(event_id).tauri()?;
+    let photo = event.find_photo(photo_id)?;
+    let preset = event.find_frame_preset(preset_id)?;
     let bytes = crate::preview::framed_preview::generate_framed_preview(photo, preset)
-        .map_err(|e| e.to_string())?;
+        .tauri()?;
     state.preview_cache.lock().unwrap().insert((photo_id, preset_id), bytes.clone());
     Ok(bytes)
 }
@@ -43,10 +40,9 @@ pub async fn clear_framed_preview_cache(
     preset_id: Option<Uuid>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut cache = state.preview_cache.lock().unwrap();
     match preset_id {
-        Some(pid) => cache.retain(|(_, fpid), _| *fpid != pid),
-        None => cache.clear(),
+        Some(pid) => state.invalidate_preview_for_preset(pid),
+        None => state.preview_cache.lock().unwrap().clear(),
     }
     Ok(())
 }
@@ -58,11 +54,11 @@ pub async fn set_orientation_override(
     orientation: Orientation,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    find_photo_mut(&mut event, photo_id)?.orientation_override = Some(orientation);
-    state.store.save(&event).map_err(|e| e.to_string())?;
+    let mut event = state.store.load(event_id).tauri()?;
+    event.find_photo_mut(photo_id)?.orientation_override = Some(orientation);
+    state.store.save(&event).tauri()?;
     // Invalidate cached previews for this photo across all presets.
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    state.invalidate_preview_for_photo(photo_id);
     Ok(())
 }
 
@@ -72,48 +68,9 @@ pub async fn clear_orientation_override(
     photo_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    find_photo_mut(&mut event, photo_id)?.orientation_override = None;
-    state.store.save(&event).map_err(|e| e.to_string())?;
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+    let mut event = state.store.load(event_id).tauri()?;
+    event.find_photo_mut(photo_id)?.orientation_override = None;
+    state.store.save(&event).tauri()?;
+    state.invalidate_preview_for_photo(photo_id);
     Ok(())
-}
-
-#[tauri::command]
-pub async fn set_crop_override(
-    event_id: Uuid,
-    photo_id: Uuid,
-    crop: CropRect,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let mut event = state.store.load(event_id).map_err(|e| e.to_string())?;
-    find_photo_mut(&mut event, photo_id)?.crop_override = Some(crop);
-    state.store.save(&event).map_err(|e| e.to_string())?;
-    // Invalidate cached previews for this photo across all presets.
-    state.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
-    Ok(())
-}
-
-fn find_photo(
-    event: &crate::project::model::Event,
-    photo_id: Uuid,
-) -> Result<&crate::project::model::Photo, String> {
-    event
-        .batches
-        .iter()
-        .flat_map(|b| &b.photos)
-        .find(|p| p.id == photo_id)
-        .ok_or_else(|| format!("photo {photo_id} not found"))
-}
-
-fn find_photo_mut(
-    event: &mut crate::project::model::Event,
-    photo_id: Uuid,
-) -> Result<&mut crate::project::model::Photo, String> {
-    event
-        .batches
-        .iter_mut()
-        .flat_map(|b| &mut b.photos)
-        .find(|p| p.id == photo_id)
-        .ok_or_else(|| format!("photo {photo_id} not found"))
 }

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use uuid::Uuid;
+use crate::json_store::{load_json, save_json};
 use crate::project::model::Event;
 
 /// Manages reading/writing event state in `{app_data}/events/`.
@@ -40,20 +41,14 @@ impl EventStore {
             return Ok(event);
         }
         let path = self.event_path(id);
-        let data = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let mut event: Event = serde_json::from_str(&data).context("deserializing event")?;
+        let mut event: Event = load_json(&path)?;
         self.migrate_if_needed(&mut event);
         self.cache.lock().unwrap().insert(id, event.clone());
         Ok(event)
     }
 
     pub fn save(&self, event: &Event) -> Result<()> {
-        let path = self.event_path(event.id);
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        let data = serde_json::to_string_pretty(event).context("serializing event")?;
-        std::fs::write(&path, data)
-            .with_context(|| format!("writing {}", path.display()))?;
+        save_json(&self.event_path(event.id), event)?;
         self.cache.lock().unwrap().insert(event.id, event.clone());
         Ok(())
     }
@@ -64,10 +59,7 @@ impl EventStore {
             let entry = entry?;
             let json_path = entry.path().join("magnet.json");
             if json_path.exists() {
-                match std::fs::read_to_string(&json_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<Event>(&s).ok())
-                {
+                match load_json::<Event>(&json_path).ok() {
                     Some(mut event) => {
                         self.migrate_if_needed(&mut event);
                         events.push(event)

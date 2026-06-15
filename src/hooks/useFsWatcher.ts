@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MagnetEvent, PhotoBatch } from "../types";
+import { EVENTS } from "../constants";
 
 type Handlers = {
   onEvent: (e: MagnetEvent) => void;
@@ -33,7 +34,7 @@ export function useFsWatcher(
     const norm = (s: string) => s.replace(/\\/g, "/");
     const parentDir = (p: string) => p.slice(0, p.lastIndexOf("/"));
 
-    const unlistenPromise = listen<string>("fs-changed", async (e) => {
+    const unlistenPromise = listen<string>(EVENTS.FS_CHANGED, async (e) => {
       const cur = eventRef.current;
       if (!cur) return;
       const changedPath = norm(e.payload);

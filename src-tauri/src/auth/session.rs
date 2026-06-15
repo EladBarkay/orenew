@@ -1,3 +1,4 @@
+use crate::json_store::{load_json, save_json};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -16,18 +17,12 @@ pub struct Session {
 
 /// Load the cached session from `session.json`. `None` if missing/unparseable.
 pub fn load_cached(path: &Path) -> Option<Session> {
-    let data = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&data).ok()
+    load_json(path).ok()
 }
 
 /// Persist the session to `session.json`.
 pub fn save_cached(path: &Path, session: &Session) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let data = serde_json::to_string_pretty(session)?;
-    std::fs::write(path, data)?;
-    Ok(())
+    save_json(path, session)
 }
 
 #[cfg(test)]

@@ -4,7 +4,10 @@ import { listen } from "@tauri-apps/api/event";
 import { Entitlement } from "../types";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
+import { tierLabel, tierColor } from "../lib/tiers";
+import { EVENTS } from "../constants";
 import { Modal } from "./ui";
+import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
   entitlement: Entitlement | null;
@@ -14,36 +17,23 @@ type Props = {
 
 const BUY_URL = "https://magnet.app/pricing";
 
-const TIER_LABELS: Record<string, string> = {
-  free: "Free",
-  pro: "Pro",
-  studio: "Studio",
-};
-
-const TIER_COLORS: Record<string, string> = {
-  free: "bg-neutral-700 text-neutral-300",
-  pro: "bg-green-700/80 text-white",
-  studio: "bg-purple-700/80 text-white",
-};
-
 export default function SettingsDialog({ entitlement, onClose, onEntitlementChange }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { error, setError, loading: busy, run } = useAsyncForm();
 
   const tier = entitlement?.tier ?? "free";
   const isSignedIn = entitlement !== null && !!entitlement.email;
 
   // Background refresh resolved a new tier — refetch the cached entitlement.
   useEffect(() => {
-    const unsub = listen<void>("tier-changed", async () => {
+    const unsub = listen<void>(EVENTS.TIER_CHANGED, async () => {
       try {
         const info = await invoke<Entitlement | null>("get_entitlement");
         onEntitlementChange(info ?? null);
       } catch {}
     });
-    const unsub2 = listen<void>("license-expired", () => onEntitlementChange(null));
+    const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => onEntitlementChange(null));
     return () => { unsub.then((fn) => fn()); unsub2.then((fn) => fn()); };
   }, [onEntitlementChange]);
 
@@ -52,9 +42,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       setError("Enter your email and password");
       return;
     }
-    setError("");
-    setBusy(true);
-    try {
+    await run(async () => {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -64,17 +52,11 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       onEntitlementChange(ent);
       setEmail("");
       setPassword("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function signInOAuth(provider: "google" | "facebook") {
-    setError("");
-    setBusy(true);
-    try {
+    await run(async () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -86,23 +68,14 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
       const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(data.url);
       // The deep-link handler (useAuthDeepLink) completes sign-in on callback.
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function signOut() {
-    setBusy(true);
-    try {
+    await run(async () => {
       await invoke("sign_out");
       onEntitlementChange(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function openBuyPage() {
@@ -123,8 +96,8 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
               License
             </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[tier] ?? TIER_COLORS.free}`}>
-              {TIER_LABELS[tier] ?? tier}
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tierColor(tier)}`}>
+              {tierLabel(tier)}
             </span>
           </div>
           {isSignedIn ? (
