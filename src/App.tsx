@@ -54,7 +54,7 @@ export default function App() {
     return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); };
   }, []);
 
-  // Completes OAuth sign-in when the magnet://auth-callback deep link arrives.
+  // Completes OAuth sign-in when the magnetapp://auth-callback deep link arrives.
   useAuthDeepLink(setEntitlement);
 
   useFsWatcher(event, activeBatch, {
