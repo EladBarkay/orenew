@@ -13,11 +13,17 @@ pub fn load_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 /// Serialize `value` to pretty JSON, creating parent directories as needed.
+///
+/// Writes to a `.tmp` sibling first, then renames atomically so a crash
+/// mid-write never leaves a truncated or zero-byte file.
 pub fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let data = serde_json::to_string_pretty(value)?;
-    std::fs::write(path, data).with_context(|| format!("writing {}", path.display()))?;
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, &data).with_context(|| format!("writing {}", tmp.display()))?;
+    std::fs::rename(&tmp, path)
+        .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()))?;
     Ok(())
 }
