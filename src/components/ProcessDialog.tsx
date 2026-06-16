@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { MagnetEvent } from "../types";
@@ -27,6 +27,17 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   const [error, setError] = useState("");
   const [printResult, setPrintResult] = useState<number | null>(null);
   const { progress, result: exportResult, clear: clearExport } = useExportProgress();
+
+  const exportProcessedRef = useRef(false);
+
+  // Call onProcessed as soon as the export-complete event arrives so the queue
+  // is cleared even if the component unmounts before the user clicks Done.
+  useEffect(() => {
+    if (exportResult && !exportProcessedRef.current) {
+      exportProcessedRef.current = true;
+      onProcessed("export", photoQueue);
+    }
+  }, [exportResult, onProcessed, photoQueue]);
 
   const totalQty = Object.values(photoQueue).reduce((s, q) => s + q, 0);
   const canvasPreset = event.canvas_presets.find((p) => p.id === canvasId);
@@ -86,7 +97,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   // Export done
   if (exportResult) {
     return (
-      <Modal onClose={() => { clearExport(); onProcessed("export", photoQueue); onClose(); }}>
+      <Modal onClose={() => { clearExport(); onClose(); }}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{exportResult.errors.length === 0 ? "✓" : "⚠"}</span>
@@ -119,7 +130,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               Open folder
             </button>
             <button
-              onClick={() => { clearExport(); onProcessed("export", photoQueue); onClose(); }}
+              onClick={() => { clearExport(); onClose(); }}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium"
             >
               Done

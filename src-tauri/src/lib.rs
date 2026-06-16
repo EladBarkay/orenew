@@ -202,9 +202,10 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
         let session = match auth::client::refresh(&existing.session.refresh_token).await {
             Ok(s) => s,
             Err(_) => {
-                // Unreachable or rejected. On the startup attempt, apply the
-                // offline grace check; if it's lapsed, fall back to Free.
-                if attempts == 1 && !existing.entitlement.is_grace_period_valid() {
+                // Can't reach the server. If the offline grace window has lapsed,
+                // evict the session so the user is treated as Free. Check on every
+                // failed attempt so a grace expiry mid-session is caught promptly.
+                if !existing.entitlement.is_grace_period_valid() {
                     let _ = std::fs::remove_file(data_dir.join("session.json"));
                     let _ = std::fs::remove_file(data_dir.join("entitlement.json"));
                     if let Ok(mut guard) = state.auth.lock() {
@@ -213,10 +214,19 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                     let _ = app.emit(constants::events::LICENSE_EXPIRED, ());
                     break;
                 }
-                // Stay on cached tier; retry in 60s.
+                // Grace still valid — stay on cached tier; retry in 60s.
                 continue;
             }
         };
+
+        // Persist the new tokens immediately after step 1 so that a failure in
+        // step 2 or 3 never leaves the old (now-consumed) refresh token on disk.
+        let _ = save_session(&data_dir.join("session.json"), &session);
+        if let Ok(mut guard) = state.auth.lock() {
+            if let Some(a) = guard.as_mut() {
+                a.session = session.clone();
+            }
+        }
 
         // 2. Verify the freshly minted access token.
         let claims = match auth::jwt::verify(&session.access_token).await {

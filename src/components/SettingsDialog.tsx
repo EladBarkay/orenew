@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { Entitlement } from "../types";
 import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
 import { tierLabel, tierColor } from "../lib/tiers";
-import { EVENTS } from "../constants";
 import { Modal } from "./ui";
 import { useAsyncForm } from "../hooks/useAsyncForm";
 
@@ -24,18 +22,6 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
 
   const tier = entitlement?.tier ?? "free";
   const isSignedIn = entitlement !== null && !!entitlement.email;
-
-  // Background refresh resolved a new tier — refetch the cached entitlement.
-  useEffect(() => {
-    const unsub = listen<void>(EVENTS.TIER_CHANGED, async () => {
-      try {
-        const info = await invoke<Entitlement | null>("get_entitlement");
-        onEntitlementChange(info ?? null);
-      } catch {}
-    });
-    const unsub2 = listen<void>(EVENTS.LICENSE_EXPIRED, () => onEntitlementChange(null));
-    return () => { unsub.then((fn) => fn()); unsub2.then((fn) => fn()); };
-  }, [onEntitlementChange]);
 
   async function signInPassword() {
     if (!email.trim() || !password) {
