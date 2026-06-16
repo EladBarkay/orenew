@@ -95,3 +95,17 @@ pub async fn count_faces_in_batch(
     .await
     .tauri()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Smallest check that the whole detect path is wired: the embedded model
+    // parses, a detector builds, and a blank image yields zero faces.
+    #[test]
+    fn blank_image_has_no_faces() {
+        let mut det = new_detector();
+        let gray = image::GrayImage::from_pixel(200, 200, image::Luma([255]));
+        assert_eq!(det.detect(&ImageData::new(&gray, 200, 200)).len(), 0);
+    }
+}

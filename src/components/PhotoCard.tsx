@@ -24,6 +24,8 @@ function PhotoCard({ photo, selected, onClick, cellSize, qty, onQtyDelta }: Prop
       className={[
         "relative w-full h-full rounded overflow-hidden group",
         "transition-all duration-100",
+        // Dim photos queued for 0 copies — they won't be printed/exported.
+        qty === 0 && !selected ? "opacity-40 hover:opacity-100" : "",
         selected
           ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-neutral-900"
           : "hover:ring-1 hover:ring-neutral-500 hover:ring-offset-1 hover:ring-offset-neutral-900",

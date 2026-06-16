@@ -32,6 +32,8 @@ export default function App() {
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
+  const [hideEmpty, setHideEmpty] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(288);
   const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const colCountRef = useRef(1);
@@ -200,7 +202,36 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
+  // When "hide empty" is on, drop photos queued for 0 copies from the grid.
+  const visiblePhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
   const queuedTotal = Object.values(photoQueue).reduce((s, q) => s + q, 0);
+
+  // Suggest per-photo export quantities = number of faces detected. Heavy, so
+  // it runs on user click (not automatically) with a live progress count.
+  async function scanFaces() {
+    if (!event || !activeBatch) return;
+    setScanning(true);
+    setStatus("Scanning faces…");
+    const unsub = await listen<{ done: number; total: number }>(
+      EVENTS.FACE_SCAN_PROGRESS,
+      (e) => setStatus(`Scanning faces… ${e.payload.done}/${e.payload.total}`)
+    );
+    try {
+      const counts = await invoke<Record<string, number>>("count_faces_in_batch", {
+        eventId: event.id,
+        batchId: activeBatch.id,
+      });
+      // Keep only positive counts (matches adjustQty's "no zero entries" rule);
+      // photos with 0 faces fall through to qty 0 → dimmed card.
+      setPhotoQueue(Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0)));
+      setStatus("");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    } finally {
+      unsub();
+      setScanning(false);
+    }
+  }
 
   // Derive uniform qty from queue — 0 if empty or mixed values.
   const allQty = photos.length > 0 && photos.every(
@@ -213,21 +244,21 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       if (["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
-        const idx = photos.findIndex((p) => p.id === selected.id);
+        const idx = visiblePhotos.findIndex((p) => p.id === selected.id);
         if (idx < 0) return;
         const cols = colCountRef.current;
         let next = idx;
-        if (e.key === "ArrowRight") next = Math.min(photos.length - 1, idx + 1);
+        if (e.key === "ArrowRight") next = Math.min(visiblePhotos.length - 1, idx + 1);
         else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-        else if (e.key === "ArrowDown") next = Math.min(photos.length - 1, idx + cols);
+        else if (e.key === "ArrowDown") next = Math.min(visiblePhotos.length - 1, idx + cols);
         else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
-        setSelected(photos[next]);
+        setSelected(visiblePhotos[next]);
       }
       if (e.key === "Escape") setSelected(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected, photos]);
+  }, [selected, visiblePhotos]);
 
   function adjustQty(photoId: string, delta: number) {
     setPhotoQueue((prev) => {
@@ -323,12 +354,16 @@ export default function App() {
         queuedTotal={queuedTotal}
         allQty={allQty}
         cellSize={cellSize}
+        hideEmpty={hideEmpty}
+        scanning={scanning}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
         onSetAllQty={handleSetAllQty}
         onCellSizeChange={setCellSize}
+        onScanFaces={scanFaces}
+        onToggleHideEmpty={() => setHideEmpty((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -361,7 +396,7 @@ export default function App() {
         {event ? (
           <div className="flex flex-1 overflow-hidden">
             <Gallery
-              photos={photos}
+              photos={visiblePhotos}
               selectedId={selected?.id ?? null}
               onSelect={setSelected}
               photoQueue={photoQueue}
