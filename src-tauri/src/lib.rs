@@ -88,8 +88,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             use tauri::{Emitter, Manager};
@@ -157,7 +155,6 @@ pub fn run() {
             commands::frame_preset::create_frame_preset,
             commands::frame_preset::update_frame_preset,
             commands::frame_preset::delete_frame_preset,
-            commands::project::open_in_explorer,
             commands::auth::establish_session,
             commands::auth::get_entitlement,
             commands::auth::sign_out,

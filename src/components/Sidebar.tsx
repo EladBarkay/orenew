@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { FramePreset, MagnetEvent, PhotoBatch } from "../types";
 import { batchDisplayPath, parentDir } from "../lib/paths";
 import { EditIcon, TrashIcon } from "./icons";
@@ -66,7 +65,8 @@ export default function Sidebar({
                   onClick={() => onSelectBatch(b)}
                   onDoubleClick={async () => {
                     try {
-                      await invoke("open_in_explorer", { path: b.source_path });
+                      const { openPath } = await import("@tauri-apps/plugin-opener");
+                      await openPath(b.source_path);
                     } catch (e) {
                       alert(`Could not open folder: ${e}`);
                     }
