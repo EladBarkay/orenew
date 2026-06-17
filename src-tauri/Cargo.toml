@@ -16,8 +16,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-deep-link = "2"
 
 serde = { version = "1", features = ["derive"] }
@@ -30,9 +28,8 @@ image = { version = "0.25", features = ["jpeg", "png", "tiff"] }
 # SIMD crop+resize for the export hot path (pure Rust)
 fast_image_resize = "5"
 
-# EXIF / XMP
+# EXIF
 kamadak-exif = "0.5"
-quick-xml = { version = "0.36", features = ["serialize"] }
 
 # Async / parallelism
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

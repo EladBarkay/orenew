@@ -6,33 +6,6 @@ use crate::commands::IntoTauri;
 use crate::project::model::{Event, Photo, PhotoBatch};
 use crate::AppState;
 
-/// Open the given folder path in the native OS file explorer.
-#[tauri::command]
-pub fn open_in_explorer(path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .tauri()?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .tauri()?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .tauri()?;
-    }
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Event, String> {
     // Resume by root_path first, then fall back to legacy batch-path lookup

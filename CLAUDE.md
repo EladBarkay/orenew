@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | State | React `useState`/`useRef` in `App.tsx` (no Jotai, no external store) |
 | Backend | Rust (stable) |
 | Image processing | `image` crate (image-rs) — JPG, PNG, TIFF (RAW deferred to v2) |
-| EXIF/XMP | `kamadak-exif` + `quick-xml` |
+| EXIF | `kamadak-exif` |
 | Parallelism | `rayon` (CPU-bound batch), Tokio (async/IPC) |
 | File watching | `notify` crate |
 | Licensing | Server-issued tokens + 14-day offline grace, device-bound via `machine-uid` |
