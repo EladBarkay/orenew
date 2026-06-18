@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FramePreset, MagnetEvent, PhotoBatch } from "../types";
+import { CanvasPreset, FramePreset, MagnetEvent, PhotoBatch } from "../types";
 import { batchDisplayPath, parentDir } from "../lib/paths";
 import { EditIcon, TrashIcon } from "./icons";
 
@@ -18,17 +18,25 @@ type Props = {
   onAddFrame: () => void;
   onEditFrame: (p: FramePreset) => void;
   onDeleteFrame: (p: FramePreset) => void;
-  onManageCanvas: () => void;
+  draggedCanvasId: string | null;
+  setDraggedCanvasId: (id: string | null) => void;
+  onReorderCanvas: (targetId: string) => void;
+  onAddCanvas: () => void;
+  onEditCanvas: (p: CanvasPreset) => void;
+  onDeleteCanvas: (p: CanvasPreset) => void;
 };
 
 export default function Sidebar({
   event, activeBatch, draggedBatchId, setDraggedBatchId,
   onAddBatch, onSelectBatch, onDeleteBatch, onReorderBatch,
   draggedFrameId, setDraggedFrameId, onReorderFrame,
-  onAddFrame, onEditFrame, onDeleteFrame, onManageCanvas,
+  onAddFrame, onEditFrame, onDeleteFrame,
+  draggedCanvasId, setDraggedCanvasId, onReorderCanvas,
+  onAddCanvas, onEditCanvas, onDeleteCanvas,
 }: Props) {
   const [dragOverBatchId, setDragOverBatchId] = useState<string | null>(null);
   const [dragOverFrameId, setDragOverFrameId] = useState<string | null>(null);
+  const [dragOverCanvasId, setDragOverCanvasId] = useState<string | null>(null);
 
   return (
     <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
@@ -153,31 +161,59 @@ export default function Sidebar({
         )}
       </Section>
 
-      <Section
-        label="Canvas presets"
-        action={
-          <button onClick={onManageCanvas} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">
-            Manage
-          </button>
-        }
-      >
+      <Section label="Canvas presets" action={
+        <button onClick={onAddCanvas} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+      }>
         {event.canvas_presets.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
             No presets —{" "}
-            <button onClick={onManageCanvas} className="text-blue-400 hover:text-blue-300 underline">
+            <button onClick={onAddCanvas} className="text-blue-400 hover:text-blue-300 underline">
               add one
             </button>
           </p>
         ) : (
-          event.canvas_presets.map((p) => (
-            <SidebarItem
-              key={p.id}
-              label={p.name}
-              sublabel={`${p.canvas_width_px}×${p.canvas_height_px} · ${p.photos_per_canvas}-up`}
-              active={false}
-              onClick={onManageCanvas}
-            />
-          ))
+          event.canvas_presets.map((p) => {
+            const isOver = dragOverCanvasId === p.id && draggedCanvasId !== p.id;
+            return (
+              <div
+                key={p.id}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData("text/plain", p.id); setDraggedCanvasId(p.id); }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverCanvasId(p.id); }}
+                onDragLeave={() => setDragOverCanvasId(null)}
+                onDrop={(e) => { e.preventDefault(); setDragOverCanvasId(null); onReorderCanvas(p.id); }}
+                onDragEnd={() => { setDraggedCanvasId(null); setDragOverCanvasId(null); }}
+                className={[
+                  "group relative cursor-grab",
+                  draggedCanvasId === p.id ? "opacity-40" : "",
+                  isOver ? "border-t-2 border-blue-500" : "",
+                ].join(" ")}
+              >
+                <div className="w-full px-3 py-1.5 pr-16 text-sm text-neutral-300">
+                  <span className="block truncate">{p.name}</span>
+                  <span className="block text-[10px] text-neutral-500">
+                    {`${p.canvas_width_px}×${p.canvas_height_px} · ${p.photos_per_canvas}-up`}
+                  </span>
+                </div>
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEditCanvas(p); }}
+                    title="Edit canvas preset"
+                    className="p-1 text-neutral-500 hover:text-blue-400"
+                  >
+                    <EditIcon />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteCanvas(p); }}
+                    title="Delete canvas preset"
+                    className="p-1 text-neutral-500 hover:text-red-400"
+                  >
+                    <TrashIcon className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </Section>
     </aside>
@@ -200,21 +236,3 @@ function Section({
   );
 }
 
-function SidebarItem({
-  label, sublabel, active, onClick,
-}: {
-  label: string; sublabel?: string; active?: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-neutral-700/60",
-        active ? "bg-blue-600/20 text-blue-300" : "text-neutral-300",
-      ].join(" ")}
-    >
-      <span className="block truncate">{label}</span>
-      {sublabel && <span className="block text-[10px] text-neutral-500">{sublabel}</span>}
-    </button>
-  );
-}

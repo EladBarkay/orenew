@@ -59,23 +59,18 @@ update public.entitlements
 
 ## 5. Config values
 
-The anon key is public and safe to ship. Wire the project URL + anon key into
-both the Rust binary and the frontend.
-
-**Rust** (baked in at `cargo build` via `src-tauri/build.rs`, override with real
-env vars):
-
-```bash
-export SUPABASE_URL="https://<project-ref>.supabase.co"
-export SUPABASE_ANON_KEY="<anon-key>"
-```
-
-**Frontend** (`.env`, see `.env.example`):
+The anon key is public and safe to ship. Both the Rust binary and the frontend
+read the same two vars from a single repo-root `.env` (see `.env.example`):
 
 ```
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_ANON_KEY=<anon-key>
 ```
+
+`src-tauri/build.rs` loads this `.env` via `dotenvy` and bakes the values in at
+`cargo build`; Vite exposes them to the frontend via
+`envPrefix: ["VITE_", "SUPABASE_"]`. A real exported shell env var overrides the
+`.env` on either side.
 
 ## Dev bypass
 

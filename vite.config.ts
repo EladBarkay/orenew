@@ -9,6 +9,11 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  // Expose SUPABASE_*-prefixed vars to the client too, so frontend and backend
+  // read the same names from .env. Only the public URL + anon key carry this
+  // prefix — never give a service-role key a SUPABASE_ prefix.
+  envPrefix: ["VITE_", "SUPABASE_"],
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

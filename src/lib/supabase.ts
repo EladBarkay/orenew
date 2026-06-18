@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL as string;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const url = import.meta.env.SUPABASE_URL as string;
+const anonKey = import.meta.env.SUPABASE_ANON_KEY as string;
 
 // The frontend only drives interactive sign-in. Rust owns the session lifecycle,
 // so we use PKCE and feed the OAuth callback URL in manually from the deep link

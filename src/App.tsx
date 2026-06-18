@@ -6,8 +6,10 @@ import PreviewPanel from "./components/PreviewPanel";
 import ProcessDialog from "./components/ProcessDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
-import CanvasPresetManager from "./components/CanvasPresetManager";
+import CanvasPresetForm from "./components/CanvasPresetForm";
+import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
+import GalleryToolbar from "./components/GalleryToolbar";
 import Sidebar from "./components/Sidebar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
@@ -15,21 +17,23 @@ import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
 import { reorderById } from "./lib/reorder";
 import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
-import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, Entitlement } from "./types";
+import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type Modal = "process" | "addFrame" | "settings" | "canvasPresets" | null;
+type ModalKind = "process" | "addFrame" | "addCanvas" | "settings" | null;
 
 export default function App() {
   const [event, setEvent] = useState<MagnetEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
-  const [modal, setModal] = useState<Modal>(null);
+  const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
+  const [draggedCanvasId, setDraggedCanvasId] = useState<string | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
+  const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
@@ -39,6 +43,10 @@ export default function App() {
   // drives the preview + shift-range anchor.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const anchorRef = useRef<string | null>(null);
+  // Photo ids the queue has already seeded. New photos that appear later (file
+  // watcher) get a default qty of 1; photos the user zeroed stay "seen" so they
+  // aren't bumped back up.
+  const seenIdsRef = useRef<Set<string>>(new Set());
 
   function clearSelection() {
     setSelected(null);
@@ -77,11 +85,26 @@ export default function App() {
   });
 
   function initQueueForBatch(batch: PhotoBatch | null | undefined): Record<string, number> {
+    seenIdsRef.current = new Set(batch?.photos.map((p) => p.id) ?? []);
     if (!batch) return {};
     const q: Record<string, number> = {};
     for (const p of batch.photos) q[p.id] = 1;
     return q;
   }
+
+  // Seed qty=1 for photos that appear after the batch was opened (added on disk
+  // and picked up by the watcher). Runs after refresh updates activeBatch.
+  useEffect(() => {
+    if (!activeBatch) return;
+    const newIds = activeBatch.photos.filter((p) => !seenIdsRef.current.has(p.id));
+    if (newIds.length === 0) return;
+    setPhotoQueue((prev) => {
+      const next = { ...prev };
+      for (const p of newIds) next[p.id] = 1;
+      return next;
+    });
+    for (const p of newIds) seenIdsRef.current.add(p.id);
+  }, [activeBatch]);
 
   async function openEvent() {
     try {
@@ -155,6 +178,34 @@ export default function App() {
     const updated = { ...event, frame_presets };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
+  }
+
+  function reorderCanvasPreset(targetId: string) {
+    if (!event) return;
+    const canvas_presets = reorderById(event.canvas_presets, draggedCanvasId, targetId);
+    if (!canvas_presets) return;
+    const updated = { ...event, canvas_presets };
+    setEvent(updated);
+    invoke("save_event", { event: updated }).catch(() => {});
+  }
+
+  async function deleteCanvasPreset(preset: CanvasPreset) {
+    if (!event) return;
+    const { confirm } = await import("@tauri-apps/plugin-dialog");
+    const yes = await confirm(
+      `Delete canvas preset "${preset.name}"?`,
+      { title: "Delete canvas preset", kind: "warning" }
+    );
+    if (!yes) return;
+    try {
+      await invoke("delete_canvas_preset", { eventId: event.id, presetId: preset.id });
+      updateEvent({
+        ...event,
+        canvas_presets: event.canvas_presets.filter((p) => p.id !== preset.id),
+      });
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
   }
 
   async function deleteFramePreset(preset: FramePreset) {
@@ -429,21 +480,13 @@ export default function App() {
         entitlement={entitlement}
         status={status}
         totalPhotos={totalPhotos}
-        activeBatch={activeBatch}
         queuedTotal={queuedTotal}
-        allQty={allQty}
-        selectedCount={selectedIds.size}
         cellSize={cellSize}
-        hideEmpty={hideEmpty}
-        scanning={scanning}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
         onProcess={() => setModal("process")}
         onSettings={() => setModal("settings")}
-        onSetAllQty={handleSetAllQty}
         onCellSizeChange={setCellSize}
-        onScanFaces={scanFaces}
-        onToggleHideEmpty={() => setHideEmpty((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -463,7 +506,12 @@ export default function App() {
             onAddFrame={() => setModal("addFrame")}
             onEditFrame={setEditingFrame}
             onDeleteFrame={deleteFramePreset}
-            onManageCanvas={() => setModal("canvasPresets")}
+            draggedCanvasId={draggedCanvasId}
+            setDraggedCanvasId={setDraggedCanvasId}
+            onReorderCanvas={reorderCanvasPreset}
+            onAddCanvas={() => setModal("addCanvas")}
+            onEditCanvas={setEditingCanvas}
+            onDeleteCanvas={deleteCanvasPreset}
           />
         ) : (
           <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700">
@@ -474,34 +522,47 @@ export default function App() {
         )}
 
         {event ? (
-          <div className="flex flex-1 overflow-hidden">
-            <Gallery
-              photos={visiblePhotos}
-              selectedId={selected?.id ?? null}
-              selectedIds={selectedIds}
-              onPhotoClick={handlePhotoClick}
-              photoQueue={photoQueue}
-              onQtyDelta={adjustQty}
-              cellSize={cellSize}
-              onColCountChange={(n) => { colCountRef.current = n; }}
-            />
-            {selected && (
-              <>
-                <div
-                  onMouseDown={onDividerMouseDown}
-                  className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
-                />
-                <PreviewPanel
-                  event={event}
-                  photo={selected}
-                  onClose={() => setSelected(null)}
-                  frameNonce={frameNonce}
-                  onOrientationOverride={(id, o) => setOrientation(id, o)}
-                  onClearOrientationOverride={(id) => setOrientation(id, null)}
-                  width={previewWidth}
-                />
-              </>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {activeBatch && activeBatch.photos.length > 0 && (
+              <GalleryToolbar
+                selectedCount={selectedIds.size}
+                allQty={allQty}
+                hideEmpty={hideEmpty}
+                scanning={scanning}
+                onSetAllQty={handleSetAllQty}
+                onScanFaces={scanFaces}
+                onToggleHideEmpty={() => setHideEmpty((v) => !v)}
+              />
             )}
+            <div className="flex flex-1 overflow-hidden">
+              <Gallery
+                photos={visiblePhotos}
+                selectedId={selected?.id ?? null}
+                selectedIds={selectedIds}
+                onPhotoClick={handlePhotoClick}
+                photoQueue={photoQueue}
+                onQtyDelta={adjustQty}
+                cellSize={cellSize}
+                onColCountChange={(n) => { colCountRef.current = n; }}
+              />
+              {selected && (
+                <>
+                  <div
+                    onMouseDown={onDividerMouseDown}
+                    className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
+                  />
+                  <PreviewPanel
+                    event={event}
+                    photo={selected}
+                    onClose={() => setSelected(null)}
+                    frameNonce={frameNonce}
+                    onOrientationOverride={(id, o) => setOrientation(id, o)}
+                    onClearOrientationOverride={(id) => setOrientation(id, null)}
+                    width={previewWidth}
+                  />
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <EmptyState onOpen={openEvent} />
@@ -536,12 +597,24 @@ export default function App() {
           onEntitlementChange={setEntitlement}
         />
       )}
-      {modal === "canvasPresets" && event && (
-        <CanvasPresetManager
-          event={event}
-          onClose={() => setModal(null)}
-          onEventUpdate={updateEvent}
-        />
+      {modal === "addCanvas" && event && (
+        <Modal onClose={() => setModal(null)}>
+          <CanvasPresetForm
+            event={event}
+            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setModal(null); }}
+            onCancel={() => setModal(null)}
+          />
+        </Modal>
+      )}
+      {editingCanvas && event && (
+        <Modal onClose={() => setEditingCanvas(null)}>
+          <CanvasPresetForm
+            event={event}
+            editing={editingCanvas}
+            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setEditingCanvas(null); }}
+            onCancel={() => setEditingCanvas(null)}
+          />
+        </Modal>
       )}
       {editingFrame && event && (
         <FramePresetDialog
