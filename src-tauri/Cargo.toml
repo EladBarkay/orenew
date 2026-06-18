@@ -54,6 +54,11 @@ anyhow = "1"
 log = "0.4"
 rustface = "0.1.7"
 
+# Desktop-only: forward the magnetapp:// OAuth callback to the running app
+# (with the deep-link feature) instead of spawning a second window.
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
 [profile.release]
 opt-level = 3
 lto = "thin"
