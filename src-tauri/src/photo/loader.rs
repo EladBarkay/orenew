@@ -1,12 +1,40 @@
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
-use image::DynamicImage;
+use image::{DynamicImage, ImageDecoder};
+use image::metadata::Orientation as ExifOrientation;
 use sha2::{Sha256, Digest};
 use crate::project::model::{Orientation, Photo};
 use uuid::Uuid;
 
+/// Decode an image with its EXIF orientation applied, so a photo rotated via
+/// Explorer/Photos (which often only flips the EXIF Orientation tag) shows
+/// upright everywhere. `image::open` ignores orientation, so we go through the
+/// decoder explicitly.
 pub fn load_photo(path: &Path) -> Result<DynamicImage> {
-    image::open(path).with_context(|| format!("opening image {}", path.display()))
+    let mut decoder = image::ImageReader::open(path)
+        .with_context(|| format!("opening image {}", path.display()))?
+        .with_guessed_format()
+        .with_context(|| format!("reading format of {}", path.display()))?
+        .into_decoder()
+        .with_context(|| format!("decoding {}", path.display()))?;
+    let orientation = decoder.orientation().unwrap_or(ExifOrientation::NoTransforms);
+    let mut img = DynamicImage::from_decoder(decoder)
+        .with_context(|| format!("decoding {}", path.display()))?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
+/// Pixel dimensions after the EXIF orientation is applied — width/height swap on
+/// a 90°/270° rotation. Keeps `Photo`'s stored dims (and thus
+/// `effective_orientation`) consistent with the upright image.
+fn upright_dims(w: u32, h: u32, orientation: ExifOrientation) -> (u32, u32) {
+    match orientation {
+        ExifOrientation::Rotate90
+        | ExifOrientation::Rotate270
+        | ExifOrientation::Rotate90FlipH
+        | ExifOrientation::Rotate270FlipH => (h, w),
+        _ => (w, h),
+    }
 }
 
 pub fn read_exif_orientation(path: &Path) -> Option<Orientation> {
@@ -53,11 +81,14 @@ pub fn compute_content_hash(photo_path: &Path, xmp_path: Option<&Path>) -> Resul
 /// Build a Photo record from a file path (dimensions + hash + orientation).
 /// Does NOT load the full image into memory.
 pub fn scan_photo(path: PathBuf) -> Result<Photo> {
-    let reader = image::ImageReader::open(&path)
+    let mut decoder = image::ImageReader::open(&path)
         .with_context(|| format!("scanning {}", path.display()))?
-        .with_guessed_format()?;
-    let (width, height) = reader.into_dimensions()
+        .with_guessed_format()?
+        .into_decoder()
         .with_context(|| format!("reading dimensions of {}", path.display()))?;
+    let (w0, h0) = decoder.dimensions();
+    let orientation = decoder.orientation().unwrap_or(ExifOrientation::NoTransforms);
+    let (width, height) = upright_dims(w0, h0, orientation);
     let xmp_path = xmp_path_for(&path);
     let content_hash = compute_content_hash(&path, xmp_path.as_deref())?;
     let exif_orientation = read_exif_orientation(&path);
@@ -73,6 +104,23 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         export_count: 0,
         content_hash,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upright_dims_swaps_on_quarter_turns_only() {
+        // 90°/270° rotations swap; everything else keeps order.
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::NoTransforms), (6000, 4000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate180), (6000, 4000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::FlipHorizontal), (6000, 4000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate90), (4000, 6000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate270), (4000, 6000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate90FlipH), (4000, 6000));
+        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate270FlipH), (4000, 6000));
+    }
 }
 
 pub fn is_supported_image(path: &Path) -> bool {
