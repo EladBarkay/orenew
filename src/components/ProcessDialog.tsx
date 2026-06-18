@@ -58,11 +58,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   }
 
   async function go() {
-    if (!frameId) { setError(t("process.selectFramePreset")); return; }
-    if (!canvasId) { setError(t("process.selectCanvasPreset")); return; }
-    if (totalQty === 0) { setError(t("process.noPhotosQueued")); return; }
+    if (!frameId) { setError(t("export.selectFramePreset")); return; }
+    if (!canvasId) { setError(t("export.selectCanvasPreset")); return; }
+    if (totalQty === 0) { setError(t("export.noPhotosQueued")); return; }
     if (destination === "export" && !event.output_folder) {
-      setError(t("process.setOutputFolderFirst"));
+      setError(t("export.setOutputFolderFirst"));
       return;
     }
     setError("");
@@ -104,11 +104,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
             <div>
               <p className="font-medium text-neutral-100">
                 {exportResult.errors.length === 0
-                  ? t("process.exportComplete")
-                  : t("process.exportFinishedErrors", { count: exportResult.errors.length })}
+                  ? t("export.exportComplete")
+                  : t("export.exportFinishedErrors", { count: exportResult.errors.length })}
               </p>
               <p className="text-xs text-neutral-400 mt-0.5">
-                {t("process.exportSummary", { count: totalQty, dir: exportResult.output_dir })}
+                {t("export.exportSummary", { count: totalQty, dir: exportResult.output_dir })}
               </p>
             </div>
           </div>
@@ -129,7 +129,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               }}
               className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
             >
-              {t("process.openFolder")}
+              {t("export.openFolder")}
             </button>
             <button
               onClick={() => { clearExport(); onClose(); }}
@@ -150,7 +150,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         <div className="space-y-4 text-center py-2">
           <p className="text-2xl">🖨</p>
           <p className="font-medium text-neutral-100">
-            {t("process.printSent", { count: printResult })}
+            {t("export.printSent", { count: printResult })}
           </p>
           <button
             onClick={onClose}
@@ -175,20 +175,20 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   return (
     <Modal onClose={onClose}>
       <div className="space-y-4">
-        <h2 className="text-base font-semibold text-neutral-100">{t("process.title")}</h2>
+        <h2 className="text-base font-semibold text-neutral-100">{t("export.title")}</h2>
 
         {/* Destination toggle */}
-        <Field label={t("process.sendTo")}>
+        <Field label={t("export.sendTo")}>
           <div className="flex gap-1.5">
-            <Chip label={t("process.print")} active={destination === "print"} onClick={() => setDestination("print")} />
-            <Chip label={t("process.exportToFolder")} active={destination === "export"} onClick={() => setDestination("export")} />
+            <Chip label={t("export.print")} active={destination === "print"} onClick={() => setDestination("print")} />
+            <Chip label={t("export.saveToPath")} active={destination === "export"} onClick={() => setDestination("export")} />
           </div>
         </Field>
 
         {/* Frame preset */}
-        <Field label={t("process.framePreset")}>
+        <Field label={t("export.framePreset")}>
           {event.frame_presets.length === 0 ? (
-            <p className="text-xs text-red-400">{t("process.noFramePresets")}</p>
+            <p className="text-xs text-red-400">{t("export.noFramePresets")}</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {event.frame_presets.map((p) => (
@@ -204,9 +204,9 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         </Field>
 
         {/* Canvas preset */}
-        <Field label={t("process.canvasPreset")}>
+        <Field label={t("export.canvasPreset")}>
           {event.canvas_presets.length === 0 ? (
-            <p className="text-xs text-red-400">{t("process.noCanvasPresets")}</p>
+            <p className="text-xs text-red-400">{t("export.noCanvasPresets")}</p>
           ) : (
             <div className="space-y-1">
               {event.canvas_presets.map((p) => (
@@ -223,20 +223,20 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
 
         {/* Output folder (export only) */}
         {destination === "export" && (
-          <Field label={t("process.outputFolder")}>
+          <Field label={t("export.outputFolder")}>
             <div className="flex items-center gap-2">
               {event.output_folder ? (
                 <span className="flex-1 text-xs text-neutral-300 truncate bg-neutral-800 rounded px-2 py-1.5">
                   {event.output_folder}
                 </span>
               ) : (
-                <span className="flex-1 text-xs text-neutral-600 italic">{t("process.notSet")}</span>
+                <span className="flex-1 text-xs text-neutral-600 italic">{t("export.notSet")}</span>
               )}
               <button
                 onClick={pickOutputFolder}
                 className="px-2 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded whitespace-nowrap"
               >
-                {event.output_folder ? t("common.change") : t("process.setFolder")}
+                {event.output_folder ? t("common.change") : t("export.setFolder")}
               </button>
             </div>
           </Field>
@@ -248,10 +248,10 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
             <strong className="text-neutral-300">{t("common.photos", { count: totalQty })}</strong>
             {" → "}
             <strong className="text-neutral-300">
-              {t("process.canvases", { count: canvasCount })}
+              {t("export.canvases", { count: canvasCount })}
             </strong>
-            {" "}({t("process.specUp", { n: canvasPreset.photos_per_canvas, w: canvasPreset.canvas_width_px, h: canvasPreset.canvas_height_px })}
-            {destination === "export" ? t("process.specDpi", { dpi: canvasPreset.dpi }) : ""})
+            {" "}({t("export.specUp", { n: canvasPreset.photos_per_canvas, w: canvasPreset.canvas_width_px, h: canvasPreset.canvas_height_px })}
+            {destination === "export" ? t("export.specDpi", { dpi: canvasPreset.dpi }) : ""})
           </p>
         )}
 
@@ -270,10 +270,10 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium"
           >
             {busy
-              ? destination === "print" ? t("process.composing") : t("process.starting")
+              ? destination === "print" ? t("export.composing") : t("export.starting")
               : destination === "print"
-                ? t("process.printAction", { count: totalQty })
-                : t("process.exportAction", { count: canvasCount })}
+                ? t("export.printAction", { count: totalQty })
+                : t("export.exportAction", { count: canvasCount })}
           </button>
         </div>
       </div>
@@ -286,7 +286,7 @@ function ExportProgressView({ progress }: { progress: ExportProgress }) {
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   return (
     <div className="space-y-4 py-2">
-      <p className="text-sm font-medium text-neutral-200">{t("process.exporting")}</p>
+      <p className="text-sm font-medium text-neutral-200">{t("export.exporting")}</p>
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-neutral-400">
           <span className="truncate max-w-[70%]">{progress.current_file}</span>

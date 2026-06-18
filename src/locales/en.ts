@@ -33,8 +33,8 @@ const en = {
   toolbar: {
     openEvent: "Open Event",
     deleteEvent: "Delete this event",
-    process: "Export",
-    processCount: "Export ({{count}})",
+    export: "Export",
+    exportCount: "Export ({{count}})",
     setQuantitiesFirst: "Set quantities on gallery photos first",
     settingsLicense: "Settings & license",
   },
@@ -88,11 +88,11 @@ const en = {
     notPrinted: "Not printed",
   },
 
-  process: {
+  export: {
     title: "Process photos",
     sendTo: "Send to",
     print: "Print",
-    exportToFolder: "Save to path",
+    saveToPath: "Save to path",
     framePreset: "Frame preset",
     noFramePresets: "No frame presets — add one first.",
     canvasPreset: "Canvas preset",

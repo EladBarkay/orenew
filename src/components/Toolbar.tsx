@@ -52,7 +52,7 @@ export default function Toolbar({
               title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}
             >
               <PrintIcon />
-              {queuedTotal > 0 ? t("toolbar.processCount", { count: queuedTotal }) : t("toolbar.process")}
+              {queuedTotal > 0 ? t("toolbar.exportCount", { count: queuedTotal }) : t("toolbar.export")}
             </button>
           </div>
         </>

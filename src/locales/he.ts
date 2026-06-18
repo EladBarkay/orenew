@@ -34,8 +34,8 @@ const he = {
   toolbar: {
     openEvent: "פתיחת אירוע",
     deleteEvent: "מחיקת האירוע הזה",
-    process: "ייצוא",
-    processCount: "ייצוא ({{count}})",
+    export: "ייצוא",
+    exportCount: "ייצוא ({{count}})",
     setQuantitiesFirst: "הגדר כמויות על התמונות בגלריה תחילה",
     settingsLicense: "הגדרות ורישיון",
   },
@@ -89,11 +89,11 @@ const he = {
     notPrinted: "לא הודפס",
   },
 
-  process: {
+  export: {
     title: "עיבוד תמונות",
     sendTo: "שלח אל",
     print: "הדפסה",
-    exportToFolder: "שמירה לנתיב",
+    saveToPath: "שמירה לנתיב",
     framePreset: "קבוצת מסגרות",
     noFramePresets: "אין קבוצות מסגרות — הוסף אחת תחילה.",
     canvasPreset: "תבנית קנבס",
