@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::auth::entitlement::Entitlement;
 use crate::auth::session::Session;
@@ -51,6 +51,36 @@ pub async fn get_entitlement(state: State<'_, AppState>) -> Result<Option<Entitl
         .lock()
         .ok()
         .and_then(|g| g.as_ref().map(|a| a.entitlement.clone())))
+}
+
+/// On-demand entitlement refresh (e.g. the Settings refresh button) for when a
+/// license changed online and the user doesn't want to wait for a restart.
+/// One-shot happy path of `auth_refresh_loop` — no retry/grace handling.
+/// `None` => signed out; dev bypass returns the cached entitlement unchanged.
+#[tauri::command]
+pub async fn refresh_entitlement(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<Entitlement>, String> {
+    let existing = { state.auth.lock().ok().and_then(|g| g.clone()) };
+    let Some(existing) = existing else { return Ok(None) };
+    if existing.is_dev() {
+        return Ok(Some(existing.entitlement));
+    }
+
+    let session = client::refresh(&existing.session.refresh_token).await.tauri()?;
+    let claims = jwt::verify(&session.access_token).await.tauri()?;
+    let entitlement = client::fetch_entitlement(&session.access_token, claims.email.clone())
+        .await
+        .tauri()?;
+
+    json_store::save_json(&state.app_data_dir.join("session.json"), &session).tauri()?;
+    json_store::save_json(&state.app_data_dir.join("entitlement.json"), &entitlement).tauri()?;
+    if let Ok(mut guard) = state.auth.lock() {
+        *guard = Some(AuthState { session, entitlement: entitlement.clone() });
+    }
+    let _ = app.emit(crate::constants::events::TIER_CHANGED, ());
+    Ok(Some(entitlement))
 }
 
 /// Sign out: clear the in-memory auth state and remove both caches.
