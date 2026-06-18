@@ -40,7 +40,8 @@ impl ThumbnailCache {
     }
 
     fn generate(&self, photo_path: &Path, out_path: &Path) -> Result<Vec<u8>> {
-        let img = image::open(photo_path)
+        // Route through load_photo so EXIF orientation is applied (upright thumb).
+        let img = crate::photo::loader::load_photo(photo_path)
             .with_context(|| format!("opening {} for thumbnail", photo_path.display()))?;
         let thumb = img.thumbnail(THUMB_SIZE, THUMB_SIZE);
         let mut buf = Vec::new();

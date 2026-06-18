@@ -39,6 +39,7 @@ export default function App() {
   const [cellSize, setCellSize] = useState(168);
   const [hideEmpty, setHideEmpty] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
   // drives the preview + shift-range anchor.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -56,6 +57,18 @@ export default function App() {
   const [previewWidth, setPreviewWidth] = useState(288);
   const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const colCountRef = useRef(1);
+
+  // Block the webview reload shortcuts — a reload wipes the in-memory event and
+  // forces the user to re-open it.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r") || e.key === "F5") {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   useEffect(() => {
     invoke<Entitlement | null>("get_entitlement")
@@ -283,10 +296,12 @@ export default function App() {
     if (!event || !activeBatch) return;
     const ids = selectedIds.size > 0 ? [...selectedIds] : null;
     setScanning(true);
-    setStatus("Scanning faces…");
+    setScanProgress(null);
+    // Progress is shown next to the Suggest-copies button in the gallery sub-bar,
+    // not in the app-level status line.
     const unsub = await listen<{ done: number; total: number }>(
       EVENTS.FACE_SCAN_PROGRESS,
-      (e) => setStatus(`Scanning faces… ${e.payload.done}/${e.payload.total}`)
+      (e) => setScanProgress({ done: e.payload.done, total: e.payload.total })
     );
     try {
       const counts = await invoke<Record<string, number>>("count_faces_in_batch", {
@@ -304,12 +319,12 @@ export default function App() {
         }
         return next;
       });
-      setStatus("");
     } catch (e) {
       setStatus(`Error: ${e}`);
     } finally {
       unsub();
       setScanning(false);
+      setScanProgress(null);
     }
   }
 
@@ -529,6 +544,7 @@ export default function App() {
                 allQty={allQty}
                 hideEmpty={hideEmpty}
                 scanning={scanning}
+                scanProgress={scanProgress}
                 onSetAllQty={handleSetAllQty}
                 onScanFaces={scanFaces}
                 onToggleHideEmpty={() => setHideEmpty((v) => !v)}
