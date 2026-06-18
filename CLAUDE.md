@@ -178,9 +178,11 @@ skips it. No sign-in, no network.
 `AppState::tier()` gates watermarking in `export_batch`/`print_photos`. Free tier
 composites a procedural diagonal-stripe watermark (no bundled asset/font).
 
-Supabase project config is baked in at build time via `build.rs`
-(`SUPABASE_URL`, `SUPABASE_ANON_KEY`) and Vite (`VITE_SUPABASE_*`). See
-`docs/supabase.md` for project setup + the SQL migration.
+Supabase project config lives in a single repo-root `.env`
+(`SUPABASE_URL`, `SUPABASE_ANON_KEY`) read by both sides: `build.rs` loads it via
+`dotenvy` and bakes the values in with `env!()`; Vite exposes them to the client
+through `envPrefix: ["VITE_", "SUPABASE_"]`. A real shell env var overrides the
+`.env`. See `docs/supabase.md` for project setup + the SQL migration.
 
 ### File watcher (current)
 
