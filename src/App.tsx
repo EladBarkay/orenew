@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
@@ -22,6 +23,7 @@ import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset,
 type ModalKind = "process" | "addFrame" | "addCanvas" | "settings" | null;
 
 export default function App() {
+  const { t } = useTranslation();
   const [event, setEvent] = useState<MagnetEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
@@ -129,7 +131,7 @@ export default function App() {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const folder = await open({ directory: true, multiple: false });
       if (!folder) return;
-      setStatus("Loading…");
+      setStatus(t("app.loading"));
       const evt = await invoke<MagnetEvent>("open_event", { path: folder });
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
@@ -138,7 +140,7 @@ export default function App() {
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       setStatus("");
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -146,8 +148,8 @@ export default function App() {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const yes = await confirm(
-      `Delete event "${event.name}"? This removes all saved settings and cannot be undone.`,
-      { title: "Delete event", kind: "warning" }
+      t("app.deleteEventConfirm", { name: event.name }),
+      { title: t("app.deleteEventTitle"), kind: "warning" }
     );
     if (!yes) return;
     try {
@@ -156,7 +158,7 @@ export default function App() {
       setActiveBatch(null);
       setSelected(null);
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -164,8 +166,8 @@ export default function App() {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const yes = await confirm(
-      `Remove batch "${batch.name}" from this event? Files are not deleted.`,
-      { title: "Remove batch", kind: "warning" }
+      t("app.removeBatchConfirm", { name: batch.name }),
+      { title: t("app.removeBatchTitle"), kind: "warning" }
     );
     if (!yes) return;
     try {
@@ -176,7 +178,7 @@ export default function App() {
         setSelected(null);
       }
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -211,8 +213,8 @@ export default function App() {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const yes = await confirm(
-      `Delete canvas preset "${preset.name}"?`,
-      { title: "Delete canvas preset", kind: "warning" }
+      t("app.deleteCanvasConfirm", { name: preset.name }),
+      { title: t("app.deleteCanvasTitle"), kind: "warning" }
     );
     if (!yes) return;
     try {
@@ -222,7 +224,7 @@ export default function App() {
         canvas_presets: event.canvas_presets.filter((p) => p.id !== preset.id),
       });
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -230,8 +232,8 @@ export default function App() {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const yes = await confirm(
-      `Delete frame preset "${preset.name}"? The PNG files are not deleted.`,
-      { title: "Delete frame preset", kind: "warning" }
+      t("app.deleteFrameConfirm", { name: preset.name }),
+      { title: t("app.deleteFrameTitle"), kind: "warning" }
     );
     if (!yes) return;
     try {
@@ -246,7 +248,7 @@ export default function App() {
             : event.active_frame_preset_id,
       });
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -260,7 +262,7 @@ export default function App() {
         defaultPath: event.root_path ?? undefined,
       });
       if (!folder) return;
-      setStatus("Loading batch…");
+      setStatus(t("app.loadingBatch"));
       const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
       updateEvent(updated);
       const newBatch = updated.batches[updated.batches.length - 1];
@@ -268,7 +270,7 @@ export default function App() {
       clearSelection();
       setStatus("");
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -325,7 +327,7 @@ export default function App() {
         return next;
       });
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     } finally {
       unsub();
       setScanning(false);
@@ -449,7 +451,7 @@ export default function App() {
       // Orientation changes the crop ratio/frame, so force the preview to refetch.
       setFrameNonce((n) => n + 1);
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("app.error", { message: String(e) }));
     }
   }
 
@@ -479,9 +481,13 @@ export default function App() {
   function onDividerMouseDown(e: React.MouseEvent) {
     e.preventDefault();
     previewDragRef.current = { startX: e.clientX, startWidth: previewWidth };
+    // The preview sits at the inline-end edge: in LTR that's the right (dragging
+    // left grows it), in RTL it's the left (dragging right grows it).
+    const rtl = document.documentElement.dir === "rtl";
     const onMove = (ev: MouseEvent) => {
       if (!previewDragRef.current) return;
-      const delta = previewDragRef.current.startX - ev.clientX;
+      const moved = previewDragRef.current.startX - ev.clientX;
+      const delta = rtl ? -moved : moved;
       setPreviewWidth(Math.max(240, Math.min(640, previewDragRef.current.startWidth + delta)));
     };
     const onUp = () => {
@@ -534,9 +540,9 @@ export default function App() {
             onDeleteCanvas={deleteCanvasPreset}
           />
         ) : (
-          <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700">
+          <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-e border-neutral-700">
             <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs p-4 text-center">
-              Open an event to begin
+              {t("app.openToBegin")}
             </div>
           </aside>
         )}

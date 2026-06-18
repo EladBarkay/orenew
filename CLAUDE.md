@@ -138,7 +138,9 @@ magnet/
 │   │   ├── icons.tsx               # SVG icon components
 │   │   └── ui.tsx                  # shared Modal and primitive UI components
 │   ├── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useExportProgress.ts, useAuthDeepLink.ts
-│   └── lib/                   # supabase.ts (client), auth.ts (establishFromSession → Rust)
+│   ├── lib/                   # supabase.ts (client), auth.ts (establishFromSession → Rust)
+│   ├── i18n.ts                # i18next setup (en + he), LANGS, setLanguage(), syncs <html lang/dir>
+│   └── locales/              # en.ts (source-of-truth dictionary) + he.ts (Hebrew, RTL)
 └── package.json
 ```
 
@@ -191,6 +193,23 @@ a frame-PNG path → bump a preview nonce to refetch framed previews; otherwise 
 batch via `refresh_batch` (which recomputes content hashes and resets `print_count` for changed
 photos in `merge_photos`). Thumbnails bust automatically because `useThumbnail` keys on
 `content_hash`. `sync_watches` re-establishes watches (batch folders + frame dirs) on event open.
+
+### Internationalization (current)
+
+UI is fully localized via **react-i18next** (`src/i18n.ts`), shipping **English**
+and **Hebrew**. All user-facing strings live in `src/locales/{en,he}.ts` (en is the
+source-of-truth shape; he carries Hebrew CLDR plural categories one/two/many/other).
+Components pull strings with `useTranslation()` → `t("area.key", { count, ...vars })`;
+counts use i18next plurals, variables use `{{interpolation}}`.
+
+The language switcher is a dropdown in `SettingsDialog`; the choice persists in
+`localStorage` (`magnet.lang`). `i18n.ts` keeps `<html lang/dir>` in sync on init and
+on every `languageChanged`, so **Hebrew switches the whole app to RTL** via the native
+`dir="rtl"` attribute. Layout flips rely on **Tailwind logical utilities** (`ms-`/`me-`,
+`ps-`/`pe-`, `border-s`/`border-e`, `text-start`, `start-`/`end-`) instead of physical
+left/right classes; the gallery "hide empty" toggle uses `rtl:-translate-x-*` and the
+preview divider drag mirrors its delta when `dir==="rtl"`. To add a language: create
+`src/locales/<code>.ts` and add an entry to `LANGS` in `src/i18n.ts`.
 
 ## Performance Targets
 

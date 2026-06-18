@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { FramePreset, MagnetEvent } from "../types";
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export default function FramePresetDialog({ event, onCreated, onClose, editing }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState(editing?.name ?? "");
   const [landscapePath, setLandscapePath] = useState(editing?.landscape_frame_path ?? "");
   const [portraitPath, setPortraitPath] = useState(editing?.portrait_frame_path ?? "");
@@ -31,10 +33,10 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
   }
 
   async function save() {
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (!landscapePath) { setError("Landscape frame PNG is required"); return; }
-    if (!portraitPath) { setError("Portrait frame PNG is required"); return; }
-    if (ratioW <= 0 || ratioH <= 0) { setError("Ratio must be positive"); return; }
+    if (!name.trim()) { setError(t("framePreset.nameRequired")); return; }
+    if (!landscapePath) { setError(t("framePreset.landscapeRequired")); return; }
+    if (!portraitPath) { setError(t("framePreset.portraitRequired")); return; }
+    if (ratioW <= 0 || ratioH <= 0) { setError(t("framePreset.ratioPositive")); return; }
 
     const input = {
       name: name.trim(),
@@ -72,39 +74,39 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
     <Modal onClose={onClose} size="sm">
       <div className="space-y-4">
         <h2 className="text-base font-semibold text-neutral-100">
-          {editing ? "Edit frame preset" : "Add frame preset"}
+          {editing ? t("framePreset.editTitle") : t("framePreset.addTitle")}
         </h2>
 
         {/* Name */}
-        <Field label="Name">
+        <Field label={t("framePreset.name")}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Classic 4:3"
+            placeholder={t("framePreset.namePlaceholder")}
             className="w-full bg-neutral-800 rounded px-3 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-neutral-600"
           />
         </Field>
 
         {/* Landscape frame */}
-        <Field label="Landscape frame (PNG)">
+        <Field label={t("framePreset.landscapeFrame")}>
           <PathPicker
             path={landscapePath}
-            placeholder="Pick landscape PNG…"
+            placeholder={t("framePreset.pickLandscape")}
             onPick={() => pickPng(setLandscapePath)}
           />
         </Field>
 
         {/* Portrait frame */}
-        <Field label="Portrait frame (PNG)">
+        <Field label={t("framePreset.portraitFrame")}>
           <PathPicker
             path={portraitPath}
-            placeholder="Pick portrait PNG…"
+            placeholder={t("framePreset.pickPortrait")}
             onPick={() => pickPng(setPortraitPath)}
           />
         </Field>
 
         {/* Ratio */}
-        <Field label="Target ratio (W : H)">
+        <Field label={t("framePreset.targetRatio")}>
           <div className="flex items-center gap-2">
             <input
               type="number" value={ratioW} min={1} max={100} step={0.1}
@@ -130,14 +132,14 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             onClick={onClose}
             className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={save}
             disabled={saving}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
           >
-            {saving ? "Saving…" : editing ? "Save changes" : "Add frame"}
+            {saving ? t("framePreset.saving") : editing ? t("framePreset.saveChanges") : t("framePreset.addFrame")}
           </button>
         </div>
       </div>

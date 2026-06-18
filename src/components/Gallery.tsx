@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { FixedSizeGrid, GridChildComponentProps } from "react-window";
 import PhotoCard from "./PhotoCard";
 import { Photo } from "../types";
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const cellStride = cellSize + GAP;
@@ -77,7 +79,7 @@ export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick,
         ref={containerRef}
         className="flex-1 flex items-center justify-center text-neutral-600 text-sm"
       >
-        No photos in this batch
+        {t("gallery.noPhotos")}
       </div>
     );
   }

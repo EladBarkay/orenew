@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { CanvasPreset } from "../types";
 
 /** Centered modal with a click-to-dismiss backdrop. `size` controls max width. */
@@ -125,6 +126,7 @@ export function PathPicker({
   placeholder: string;
   onPick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex gap-2">
       <div className="flex-1 min-w-0 bg-neutral-800 rounded px-3 py-1.5 text-xs text-neutral-400 truncate">
@@ -134,7 +136,7 @@ export function PathPicker({
         onClick={onPick}
         className="shrink-0 px-2.5 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
       >
-        {path ? "Change" : "Pick PNG"}
+        {path ? t("pathPicker.change") : t("pathPicker.pickPng")}
       </button>
     </div>
   );
@@ -154,14 +156,14 @@ export function PresetOption({
     <button
       onClick={onSelect}
       className={[
-        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
+        "w-full text-start px-3 py-2 rounded text-sm transition-colors",
         selected
           ? "bg-blue-600/20 ring-1 ring-blue-500 text-neutral-100"
           : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300",
       ].join(" ")}
     >
       <span className="font-medium">{preset.name}</span>
-      <span className="ml-2 text-xs text-neutral-500">
+      <span className="ms-2 text-xs text-neutral-500">
         {preset.canvas_width_px}×{preset.canvas_height_px} · {preset.photos_per_canvas}-up ·{" "}
         {preset.dpi} DPI
       </span>
