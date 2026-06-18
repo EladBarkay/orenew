@@ -11,13 +11,13 @@ type Props = {
   queuedTotal: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
-  onProcess: () => void;
+  onExport: () => void;
   onSettings: () => void;
 };
 
 export default function Toolbar({
   event, entitlement, status, totalPhotos, queuedTotal,
-  onOpenEvent, onDeleteEvent, onProcess, onSettings,
+  onOpenEvent, onDeleteEvent, onExport, onSettings,
 }: Props) {
   const { t } = useTranslation();
   const tier = entitlement?.tier ?? "free";
@@ -46,7 +46,7 @@ export default function Toolbar({
 
           <div className="ms-auto flex items-center gap-3">
             <button
-              onClick={onProcess}
+              onClick={onExport}
               disabled={queuedTotal === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
               title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}

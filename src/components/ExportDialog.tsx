@@ -3,22 +3,22 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { MagnetEvent } from "../types";
-import { ExportProgress, useExportProgress } from "../hooks/useExportProgress";
+import { SaveProgress, useSaveProgress } from "../hooks/useSaveProgress";
 import { Modal, Field, Chip, PresetOption } from "./ui";
 
-type Destination = "print" | "export";
+type Destination = "print" | "save";
 
 type Props = {
   event: MagnetEvent;
   photoQueue: Record<string, number>;
   onClose: () => void;
   onEventUpdate: (e: MagnetEvent) => void;
-  onProcessed: (destination: Destination, quantities: Record<string, number>) => void;
+  onExported: (destination: Destination, quantities: Record<string, number>) => void;
 };
 
-export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdate, onProcessed }: Props) {
+export default function ExportDialog({ event, photoQueue, onClose, onEventUpdate, onExported }: Props) {
   const { t } = useTranslation();
-  const [destination, setDestination] = useState<Destination>("export");
+  const [destination, setDestination] = useState<Destination>("save");
   const [frameId, setFrameId] = useState<string>(
     event.active_frame_preset_id ?? event.frame_presets[0]?.id ?? ""
   );
@@ -26,18 +26,18 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [printResult, setPrintResult] = useState<number | null>(null);
-  const { progress, result: exportResult, clear: clearExport } = useExportProgress();
+  const { progress, result: saveResult, clear: clearSave } = useSaveProgress();
 
-  const exportProcessedRef = useRef(false);
+  const saveProcessedRef = useRef(false);
 
-  // Call onProcessed as soon as the export-complete event arrives so the queue
+  // Call onExported as soon as the save-complete event arrives so the queue
   // is cleared even if the component unmounts before the user clicks Done.
   useEffect(() => {
-    if (exportResult && !exportProcessedRef.current) {
-      exportProcessedRef.current = true;
-      onProcessed("export", photoQueue);
+    if (saveResult && !saveProcessedRef.current) {
+      saveProcessedRef.current = true;
+      onExported("save", photoQueue);
     }
-  }, [exportResult, onProcessed, photoQueue]);
+  }, [saveResult, onExported, photoQueue]);
 
   const totalQty = Object.values(photoQueue).reduce((s, q) => s + q, 0);
   const canvasPreset = event.canvas_presets.find((p) => p.id === canvasId);
@@ -61,8 +61,8 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
     if (!frameId) { setError(t("export.selectFramePreset")); return; }
     if (!canvasId) { setError(t("export.selectCanvasPreset")); return; }
     if (totalQty === 0) { setError(t("export.noPhotosQueued")); return; }
-    if (destination === "export" && !event.output_folder) {
-      setError(t("export.setOutputFolderFirst"));
+    if (destination === "save" && !event.output_folder) {
+      setError(t("export.setSavePathFirst"));
       return;
     }
     setError("");
@@ -77,16 +77,16 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
           canvasPresetId: canvasId,
         });
         setPrintResult(count);
-        onProcessed("print", photoQueue);
+        onExported("print", photoQueue);
       } else {
-        clearExport();
-        await invoke("export_batch", {
+        clearSave();
+        await invoke("save_batch", {
           eventId: event.id,
           quantities,
           framePresetId: frameId,
           canvasPresetId: canvasId,
         });
-        // export-complete handled by useExportProgress
+        // save-complete handled by useSaveProgress
       }
     } catch (e) {
       setError(String(e));
@@ -94,27 +94,27 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
     }
   }
 
-  // Export done
-  if (exportResult) {
+  // Save done
+  if (saveResult) {
     return (
-      <Modal onClose={() => { clearExport(); onClose(); }}>
+      <Modal onClose={() => { clearSave(); onClose(); }}>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">{exportResult.errors.length === 0 ? "✓" : "⚠"}</span>
+            <span className="text-2xl">{saveResult.errors.length === 0 ? "✓" : "⚠"}</span>
             <div>
               <p className="font-medium text-neutral-100">
-                {exportResult.errors.length === 0
-                  ? t("export.exportComplete")
-                  : t("export.exportFinishedErrors", { count: exportResult.errors.length })}
+                {saveResult.errors.length === 0
+                  ? t("export.saveComplete")
+                  : t("export.saveFinishedErrors", { count: saveResult.errors.length })}
               </p>
               <p className="text-xs text-neutral-400 mt-0.5">
-                {t("export.exportSummary", { count: totalQty, dir: exportResult.output_dir })}
+                {t("export.saveSummary", { count: totalQty, dir: saveResult.output_dir })}
               </p>
             </div>
           </div>
-          {exportResult.errors.length > 0 && (
+          {saveResult.errors.length > 0 && (
             <ul className="text-xs text-red-400 space-y-0.5 max-h-32 overflow-y-auto">
-              {exportResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+              {saveResult.errors.map((e, i) => <li key={i}>{e}</li>)}
             </ul>
           )}
           <div className="flex justify-end gap-2">
@@ -122,7 +122,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               onClick={async () => {
                 try {
                   const { openPath } = await import("@tauri-apps/plugin-opener");
-                  await openPath(exportResult.output_dir);
+                  await openPath(saveResult.output_dir);
                 } catch (e) {
                   alert(t("common.couldNotOpenFolder", { message: String(e) }));
                 }
@@ -132,7 +132,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               {t("export.openFolder")}
             </button>
             <button
-              onClick={() => { clearExport(); onClose(); }}
+              onClick={() => { clearSave(); onClose(); }}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium"
             >
               {t("common.done")}
@@ -163,11 +163,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
     );
   }
 
-  // Export in progress
-  if (busy && destination === "export" && progress) {
+  // Save in progress
+  if (busy && destination === "save" && progress) {
     return (
       <Modal onClose={() => {}}>
-        <ExportProgressView progress={progress} />
+        <SaveProgressView progress={progress} />
       </Modal>
     );
   }
@@ -181,7 +181,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         <Field label={t("export.sendTo")}>
           <div className="flex gap-1.5">
             <Chip label={t("export.print")} active={destination === "print"} onClick={() => setDestination("print")} />
-            <Chip label={t("export.saveToPath")} active={destination === "export"} onClick={() => setDestination("export")} />
+            <Chip label={t("export.saveToPath")} active={destination === "save"} onClick={() => setDestination("save")} />
           </div>
         </Field>
 
@@ -221,9 +221,9 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
           )}
         </Field>
 
-        {/* Output folder (export only) */}
-        {destination === "export" && (
-          <Field label={t("export.outputFolder")}>
+        {/* Save path (save only) */}
+        {destination === "save" && (
+          <Field label={t("export.savePath")}>
             <div className="flex items-center gap-2">
               {event.output_folder ? (
                 <span className="flex-1 text-xs text-neutral-300 truncate bg-neutral-800 rounded px-2 py-1.5">
@@ -236,7 +236,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
                 onClick={pickOutputFolder}
                 className="px-2 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded whitespace-nowrap"
               >
-                {event.output_folder ? t("common.change") : t("export.setFolder")}
+                {event.output_folder ? t("common.change") : t("export.setPath")}
               </button>
             </div>
           </Field>
@@ -251,7 +251,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               {t("export.canvases", { count: canvasCount })}
             </strong>
             {" "}({t("export.specUp", { n: canvasPreset.photos_per_canvas, w: canvasPreset.canvas_width_px, h: canvasPreset.canvas_height_px })}
-            {destination === "export" ? t("export.specDpi", { dpi: canvasPreset.dpi }) : ""})
+            {destination === "save" ? t("export.specDpi", { dpi: canvasPreset.dpi }) : ""})
           </p>
         )}
 
@@ -266,14 +266,14 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
           </button>
           <button
             onClick={go}
-            disabled={busy || totalQty === 0 || !frameId || !canvasId || (destination === "export" && !event.output_folder)}
+            disabled={busy || totalQty === 0 || !frameId || !canvasId || (destination === "save" && !event.output_folder)}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium"
           >
             {busy
               ? destination === "print" ? t("export.composing") : t("export.starting")
               : destination === "print"
                 ? t("export.printAction", { count: totalQty })
-                : t("export.exportAction", { count: canvasCount })}
+                : t("export.saveAction", { count: canvasCount })}
           </button>
         </div>
       </div>
@@ -281,12 +281,12 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   );
 }
 
-function ExportProgressView({ progress }: { progress: ExportProgress }) {
+function SaveProgressView({ progress }: { progress: SaveProgress }) {
   const { t } = useTranslation();
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   return (
     <div className="space-y-4 py-2">
-      <p className="text-sm font-medium text-neutral-200">{t("export.exporting")}</p>
+      <p className="text-sm font-medium text-neutral-200">{t("export.saving")}</p>
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-neutral-400">
           <span className="truncate max-w-[70%]">{progress.current_file}</span>

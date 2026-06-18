@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
 import PreviewPanel from "./components/PreviewPanel";
-import ProcessDialog from "./components/ProcessDialog";
+import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
@@ -20,7 +20,7 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "process" | "addFrame" | "addCanvas" | "settings" | null;
+type ModalKind = "export" | "addFrame" | "addCanvas" | "settings" | null;
 
 export default function App() {
   const { t } = useTranslation();
@@ -477,15 +477,15 @@ export default function App() {
     }
   }
 
-  // After processing: optimistically bump counts for processed photos and clear
+  // After exporting: optimistically bump counts for processed photos and clear
   // only those from the queue (`queue` is the effective, possibly selection-scoped set).
-  function handleProcessed(destination: "print" | "export", queue: Record<string, number>) {
+  function handleExported(destination: "print" | "save", queue: Record<string, number>) {
     const bump = (p: Photo): Photo => {
       const qty = queue[p.id] ?? 0;
       if (!qty) return p;
       return destination === "print"
         ? { ...p, print_count: p.print_count + qty }
-        : { ...p, export_count: p.export_count + qty };
+        : { ...p, save_count: p.save_count + qty };
     };
     setEvent((prev) =>
       prev
@@ -531,7 +531,7 @@ export default function App() {
         queuedTotal={queuedTotal}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
-        onProcess={() => setModal("process")}
+        onExport={() => setModal("export")}
         onSettings={() => setModal("settings")}
       />
 
@@ -617,13 +617,13 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {modal === "process" && event && (
-        <ProcessDialog
+      {modal === "export" && event && (
+        <ExportDialog
           event={event}
           photoQueue={effectiveQueue}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
-          onProcessed={handleProcessed}
+          onExported={handleExported}
         />
       )}
       {modal === "addFrame" && event && (
