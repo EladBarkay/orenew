@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Entitlement, MagnetEvent } from "../types";
-import { PrintIcon, SettingsIcon, TrashIcon } from "./icons";
+import { MagnetLogo, PrintIcon, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
 
 type Props = {
@@ -24,6 +24,7 @@ export default function Toolbar({
 
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-800 border-b border-neutral-700 shrink-0">
+      <MagnetLogo className="w-6 h-6 text-[#5B5BD6]" />
       <span className="font-bold text-base tracking-tight text-white">MagNet</span>
       <div className="w-px h-4 bg-neutral-600" />
       <button onClick={onOpenEvent}
