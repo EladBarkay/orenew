@@ -65,4 +65,5 @@ export type MagnetEvent = {
   canvas_presets: CanvasPreset[];
   output_folder: string | null;
   active_frame_preset_id: string | null;
+  active_canvas_preset_id: string | null;
 };
