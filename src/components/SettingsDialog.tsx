@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { establishFromSession } from "../lib/auth";
 import { tierLabel, tierColor } from "../lib/tiers";
 import { Modal } from "./ui";
+import { RefreshIcon } from "./icons";
 import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
@@ -64,6 +65,13 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
     });
   }
 
+  async function refreshLicense() {
+    await run(async () => {
+      const ent = await invoke<Entitlement | null>("refresh_entitlement");
+      onEntitlementChange(ent ?? null);
+    });
+  }
+
   async function openBuyPage() {
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -82,9 +90,19 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
             <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
               License
             </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tierColor(tier)}`}>
-              {tierLabel(tier)}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${tierColor(tier)}`}>
+                {tierLabel(tier)}
+              </span>
+              <button
+                onClick={refreshLicense}
+                disabled={busy}
+                title="Refresh license"
+                className="text-neutral-500 hover:text-neutral-200 disabled:opacity-40 disabled:cursor-wait transition-colors"
+              >
+                <RefreshIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
           {isSignedIn ? (
             <div className="text-xs text-neutral-400 space-y-0.5">

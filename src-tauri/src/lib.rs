@@ -180,6 +180,7 @@ pub fn run() {
             commands::frame_preset::delete_frame_preset,
             commands::auth::establish_session,
             commands::auth::get_entitlement,
+            commands::auth::refresh_entitlement,
             commands::auth::sign_out,
         ])
         .run(tauri::generate_context!())
