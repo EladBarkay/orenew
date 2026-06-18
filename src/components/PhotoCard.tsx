@@ -2,7 +2,6 @@ import { memo } from "react";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { Photo } from "../types";
 import { basename } from "../lib/paths";
-import { QtyButton } from "./ui";
 
 type Props = {
   photo: Photo;
@@ -51,28 +50,26 @@ function PhotoCard({ photo, selected, active, onClick, cellSize, qty, onQtyDelta
         )}
       </button>
 
-      {/* Bottom overlay: filename + quantity stepper */}
+      {/* Bottom overlay: filename above a full-width −/count/+ stepper */}
       <div
         className={[
-          "absolute bottom-0 inset-x-0 flex items-center justify-between px-1.5 py-1.5",
-          "bg-gradient-to-t from-black/80 to-transparent",
+          "absolute bottom-0 inset-x-0 flex flex-col",
+          "bg-gradient-to-t from-black/85 via-black/55 to-transparent pt-4",
           "transition-opacity",
           qty > 0 || selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         ].join(" ")}
       >
-        {cellSize >= 140 ? (
-          <span className="text-[10px] text-neutral-300 truncate leading-tight max-w-[50%] pointer-events-none">
+        {cellSize >= 140 && (
+          <span className="px-2 text-[10px] text-neutral-200 truncate leading-tight pointer-events-none">
             {filename}
           </span>
-        ) : (
-          <span />
         )}
-        <div className="flex items-center gap-1">
-          <QtyButton label="−" onClick={() => onQtyDelta(-1)} disabled={qty <= 0} />
-          <span className="min-w-[18px] text-center text-sm font-semibold text-white tabular-nums">
+        <div className="flex items-stretch h-9 mt-1">
+          <StepButton label="−" onClick={() => onQtyDelta(-1)} disabled={qty <= 0} />
+          <span className="flex-1 flex items-center justify-center text-base font-bold text-white tabular-nums select-none">
             {qty}
           </span>
-          <QtyButton label="+" onClick={() => onQtyDelta(+1)} />
+          <StepButton label="+" onClick={() => onQtyDelta(+1)} />
         </div>
       </div>
     </div>
@@ -80,3 +77,16 @@ function PhotoCard({ photo, selected, active, onClick, cellSize, qty, onQtyDelta
 }
 
 export default memo(PhotoCard);
+
+/** Half-width, full-height stepper button for the gallery card overlay. */
+function StepButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      disabled={disabled}
+      className="flex-1 flex items-center justify-center text-xl font-bold leading-none text-white bg-white/10 hover:bg-white/25 active:bg-white/35 disabled:opacity-25 disabled:hover:bg-white/10 transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
