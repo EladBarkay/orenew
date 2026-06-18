@@ -65,9 +65,10 @@ Three chrome bands; everything else is photos.
 - **Batch tab strip**: each batch is a horizontal tab (thumbnail/initial + name + photo
   count); active tab highlighted in indigo. `+` adds a batch. Tabs are drag-reorderable
   (reuse `reorderById` + `save_event`, same as today's sidebar). Right side of the strip
-  holds the two view controls: **hide-empty** toggle and **grid-size** control
-  (replacing the Ctrl+wheel-only affordance with a visible control; keyboard shortcut
-  retained).
+  holds the two view controls: **hide-empty** toggle and **grid-size** control. Grid
+  size is adjustable three ways: visible **− / +** buttons, **Ctrl + wheel**, and
+  **Ctrl + − / +** keyboard (the existing wheel + keyboard handlers are kept; the
+  buttons are new and call the same clamp/step logic).
 - **Grid**: full-width `react-window` virtual grid of `PhotoCard`s. Each card keeps an
   always-visible qty stepper (large targets) at the bottom. Selection visuals (ring) use
   the indigo accent.
@@ -123,9 +124,10 @@ review an intentional, focused mode rather than a permanent panel.
 
 Both frame and canvas presets are selected and managed **inside the Export dialog**:
 - A row of visual **preset chips** for frames and for canvases; the active one is
-  highlighted. Selection persists as the event's sticky default
-  (`active_frame_preset_id` already exists; add an analogous sticky canvas default or
-  remember last-used in session).
+  highlighted. Selection persists as the event's sticky default. Frames already use
+  `active_frame_preset_id`; add a parallel persisted `active_canvas_preset_id` on
+  `Event` so the **last-used canvas is remembered across app reloads** (written to
+  `magnet.json` via `save_event`, same path as the frame default).
 - A small **Manage** control opens add/edit/delete/reorder, reusing the existing
   `FramePresetDialog` and `CanvasPresetForm` components and the existing
   create/update/delete/reorder IPC commands. Reorder reuses `reorderById` + `save_event`.
@@ -176,7 +178,8 @@ custom-property tokens in `index.css` for the new palette so surfaces stay consi
 - Dark-only, indigo-accented, consistent tokens; en/he + RTL intact.
 - No regression in the Rust pipeline or IPC contracts.
 
-## Open questions / deferrable
-- Sticky canvas default: add a persisted `active_canvas_preset_id` on `Event`, or just
-  remember last-used in session? (Lean: session-only first; persist later if asked.)
-- Grid-size control widget style (slider vs −/+ buttons) — decide during implementation.
+## Resolved decisions
+- **Sticky canvas default:** persist `active_canvas_preset_id` on `Event` (in
+  `magnet.json`); the last-used canvas is restored on app reload.
+- **Grid-size control:** support all three — visible − / + buttons, Ctrl + wheel, and
+  Ctrl + − / + keyboard.
