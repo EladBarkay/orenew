@@ -57,3 +57,20 @@ export function PictureIcon({ className = "w-16 h-16" }: IconProps) {
     </svg>
   );
 }
+
+// MagNet brand mark — "Magnetic Iris" (D1, depth variant). Faceted aperture blades
+// (stepped fill-opacity) + open-base rim. Color via currentColor; paths verbatim from
+// magnet-lens-preview.html (#lens). Use flat variant for ≤16px (favicon: public/magnet.svg).
+export function MagnetLogo({ className = "w-6 h-6" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
+      <path fillOpacity={0.5} d="M189 139.95 A134 134 0 0 1 323 139.95 L281.98 241 L256 226 Z" />
+      <path fillOpacity={0.6} d="M323 139.95 A134 134 0 0 1 390 256 L281.98 271 L281.98 241 Z" />
+      <path fillOpacity={0.7} d="M390 256 A134 134 0 0 1 323 372.05 L256 286 L281.98 271 Z" />
+      <path fillOpacity={0.8} d="M323 372.05 A134 134 0 0 1 189 372.05 L230.02 271 L256 286 Z" />
+      <path fillOpacity={0.9} d="M189 372.05 A134 134 0 0 1 122 256 L230.02 241 L230.02 271 Z" />
+      <path fillOpacity={0.97} d="M122 256 A134 134 0 0 1 189 139.95 L256 226 L230.02 241 Z" />
+      <path d="M187.6 444 A200 200 0 1 1 324.4 444 L308 398.9 A152 152 0 1 0 204 398.9 Z" />
+    </svg>
+  );
+}
