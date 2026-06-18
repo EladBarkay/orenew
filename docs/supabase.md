@@ -72,6 +72,24 @@ SUPABASE_ANON_KEY=<anon-key>
 `envPrefix: ["VITE_", "SUPABASE_"]`. A real exported shell env var overrides the
 `.env` on either side.
 
+## 6. Google / OAuth sign-in
+
+The desktop OAuth flow opens the system browser at the Supabase authorize URL,
+which redirects to Google and back to the app via the custom deep link
+`magnetapp://auth-callback` (PKCE; `useAuthDeepLink` exchanges the code). The
+app registers the `magnetapp://` scheme with the OS at runtime
+(`lib.rs` → `deep_link().register_all()`), so the callback reaches dev builds too.
+
+For sign-in to actually complete, configure the Supabase project:
+
+1. **Auth → Providers → Google**: enable it; paste a Google Cloud OAuth client
+   ID + secret.
+2. **Google Cloud Console** → that OAuth client → *Authorized redirect URIs* →
+   add `https://<project-ref>.supabase.co/auth/v1/callback`.
+3. **Auth → URL Configuration → Redirect URLs**: add `magnetapp://auth-callback`.
+   If this is missing, the authorize page stalls instead of redirecting to
+   Google (the `redirect_to` is rejected).
+
 ## Dev bypass
 
 To run at a paid tier without any sign-in, build with:

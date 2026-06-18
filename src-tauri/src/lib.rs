@@ -123,6 +123,15 @@ pub fn run() {
                 preview_cache: Arc::new(Mutex::new(HashMap::new())),
             });
 
+            // Register the magnetapp:// scheme with the OS at runtime so the
+            // OAuth callback deep link reaches the app on Windows/Linux dev and
+            // unpackaged builds (installers register it, but dev runs don't).
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+            }
+
             // Background task: refresh the session on startup, then retry every
             // 60s until the server responds or there's no session to refresh.
             let app_handle_bg = app.handle().clone();
