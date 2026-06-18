@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, MagnetEvent } from "../types";
 import { Field, NumInput } from "./ui";
@@ -20,6 +21,7 @@ const PRESETS = [
 ];
 
 export default function CanvasPresetForm({ event, onCreated, onCancel, editing }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState(editing?.name ?? "");
   const [w, setW] = useState(editing?.canvas_width_px ?? 2400);
   const [h, setH] = useState(editing?.canvas_height_px ?? 1600);
@@ -37,8 +39,8 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   }
 
   async function save() {
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (cols * rows < n) { setError(`Grid ${cols}×${rows} has ${cols*rows} slots but photos/canvas is ${n}`); return; }
+    if (!name.trim()) { setError(t("canvasPreset.nameRequired")); return; }
+    if (cols * rows < n) { setError(t("canvasPreset.gridSlotsError", { cols, rows, slots: cols * rows, n })); return; }
     const input = { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
       photos_per_canvas: n, dpi, cols, rows };
     await run(async () => {
@@ -62,46 +64,46 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   return (
     <div className="bg-neutral-800 rounded-lg p-4 space-y-3">
       <p className="text-sm font-medium text-neutral-200">
-        {editing ? "Edit canvas preset" : "New canvas preset"}
+        {editing ? t("canvasPreset.editTitle") : t("canvasPreset.newTitle")}
       </p>
 
       {/* Quick-pick templates */}
       <div className="flex flex-wrap gap-1.5">
-        {PRESETS.map((t, i) => (
+        {PRESETS.map((tpl, i) => (
           <button
-            key={t.label}
+            key={tpl.label}
             onClick={() => applyTemplate(i)}
             className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
           >
-            {t.label}
+            {tpl.n === 0 ? t("canvasPreset.custom") : tpl.label}
           </button>
         ))}
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="col-span-2">
-          <Field label="Name">
+          <Field label={t("canvasPreset.name")}>
             <input value={name} onChange={e => setName(e.target.value)}
               className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </Field>
         </div>
-        <Field label="Width (px)">
+        <Field label={t("canvasPreset.width")}>
           <NumInput value={w} onChange={setW} min={100} />
         </Field>
-        <Field label="Height (px)">
+        <Field label={t("canvasPreset.height")}>
           <NumInput value={h} onChange={setH} min={100} />
         </Field>
-        <Field label="Photos / canvas">
+        <Field label={t("canvasPreset.photosPerCanvas")}>
           <NumInput value={n} onChange={setN} min={1} max={16} />
         </Field>
-        <Field label="Grid cols × rows">
+        <Field label={t("canvasPreset.gridColsRows")}>
           <div className="flex items-center gap-1">
             <NumInput value={cols} onChange={setCols} min={1} max={8} />
             <span className="text-neutral-500">×</span>
             <NumInput value={rows} onChange={setRows} min={1} max={8} />
           </div>
         </Field>
-        <Field label="DPI">
+        <Field label={t("canvasPreset.dpi")}>
           <NumInput value={dpi} onChange={setDpi} min={72} max={600} />
         </Field>
       </div>
@@ -111,11 +113,11 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
       <div className="flex justify-end gap-2 pt-1">
         <button onClick={onCancel}
           className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200">
-          Cancel
+          {t("common.cancel")}
         </button>
         <button onClick={save} disabled={saving}
           className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded font-medium">
-          {saving ? "Saving…" : editing ? "Save changes" : "Save preset"}
+          {saving ? t("canvasPreset.saving") : editing ? t("canvasPreset.saveChanges") : t("canvasPreset.savePreset")}
         </button>
       </div>
     </div>

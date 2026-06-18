@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { MagnetEvent } from "../types";
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdate, onProcessed }: Props) {
+  const { t } = useTranslation();
   const [destination, setDestination] = useState<Destination>("export");
   const [frameId, setFrameId] = useState<string>(
     event.active_frame_preset_id ?? event.frame_presets[0]?.id ?? ""
@@ -58,11 +60,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   }
 
   async function go() {
-    if (!frameId) { setError("Select a frame preset"); return; }
-    if (!canvasId) { setError("Select a canvas preset"); return; }
-    if (totalQty === 0) { setError("No photos queued"); return; }
+    if (!frameId) { setError(t("process.selectFramePreset")); return; }
+    if (!canvasId) { setError(t("process.selectCanvasPreset")); return; }
+    if (totalQty === 0) { setError(t("process.noPhotosQueued")); return; }
     if (destination === "export" && !event.output_folder) {
-      setError("Set an output folder first");
+      setError(t("process.setOutputFolderFirst"));
       return;
     }
     setError("");
@@ -104,11 +106,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
             <div>
               <p className="font-medium text-neutral-100">
                 {exportResult.errors.length === 0
-                  ? "Export complete"
-                  : `Export finished with ${exportResult.errors.length} error(s)`}
+                  ? t("process.exportComplete")
+                  : t("process.exportFinishedErrors", { count: exportResult.errors.length })}
               </p>
               <p className="text-xs text-neutral-400 mt-0.5">
-                {totalQty} photos → {exportResult.output_dir}
+                {t("process.exportSummary", { count: totalQty, dir: exportResult.output_dir })}
               </p>
             </div>
           </div>
@@ -124,18 +126,18 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
                   const { openPath } = await import("@tauri-apps/plugin-opener");
                   await openPath(exportResult.output_dir);
                 } catch (e) {
-                  alert(`Could not open folder: ${e}`);
+                  alert(t("common.couldNotOpenFolder", { message: String(e) }));
                 }
               }}
               className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
             >
-              Open folder
+              {t("process.openFolder")}
             </button>
             <button
               onClick={() => { clearExport(); onClose(); }}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded font-medium"
             >
-              Done
+              {t("common.done")}
             </button>
           </div>
         </div>
@@ -150,13 +152,13 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         <div className="space-y-4 text-center py-2">
           <p className="text-2xl">🖨</p>
           <p className="font-medium text-neutral-100">
-            Sent {printResult} file{printResult !== 1 ? "s" : ""} for printing
+            {t("process.printSent", { count: printResult })}
           </p>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium"
           >
-            Done
+            {t("common.done")}
           </button>
         </div>
       </Modal>
@@ -175,20 +177,20 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
   return (
     <Modal onClose={onClose}>
       <div className="space-y-4">
-        <h2 className="text-base font-semibold text-neutral-100">Process photos</h2>
+        <h2 className="text-base font-semibold text-neutral-100">{t("process.title")}</h2>
 
         {/* Destination toggle */}
-        <Field label="Send to">
+        <Field label={t("process.sendTo")}>
           <div className="flex gap-1.5">
-            <Chip label="Print" active={destination === "print"} onClick={() => setDestination("print")} />
-            <Chip label="Export to folder" active={destination === "export"} onClick={() => setDestination("export")} />
+            <Chip label={t("process.print")} active={destination === "print"} onClick={() => setDestination("print")} />
+            <Chip label={t("process.exportToFolder")} active={destination === "export"} onClick={() => setDestination("export")} />
           </div>
         </Field>
 
         {/* Frame preset */}
-        <Field label="Frame preset">
+        <Field label={t("process.framePreset")}>
           {event.frame_presets.length === 0 ? (
-            <p className="text-xs text-red-400">No frame presets — add one first.</p>
+            <p className="text-xs text-red-400">{t("process.noFramePresets")}</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {event.frame_presets.map((p) => (
@@ -204,7 +206,7 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         </Field>
 
         {/* Canvas preset */}
-        <Field label="Canvas preset">
+        <Field label={t("process.canvasPreset")}>
           {event.canvas_presets.length > 0 && (
             <div className="space-y-1">
               {event.canvas_presets.map((p) => (
@@ -233,27 +235,27 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
               disabled={busy}
               className={`text-xs ${busy ? "text-neutral-600 cursor-not-allowed" : "text-blue-400 hover:text-blue-300"}`}
             >
-              + New preset
+              {t("process.newPreset")}
             </button>
           )}
         </Field>
 
         {/* Output folder (export only) */}
         {destination === "export" && (
-          <Field label="Output folder">
+          <Field label={t("process.outputFolder")}>
             <div className="flex items-center gap-2">
               {event.output_folder ? (
                 <span className="flex-1 text-xs text-neutral-300 truncate bg-neutral-800 rounded px-2 py-1.5">
                   {event.output_folder}
                 </span>
               ) : (
-                <span className="flex-1 text-xs text-neutral-600 italic">Not set</span>
+                <span className="flex-1 text-xs text-neutral-600 italic">{t("process.notSet")}</span>
               )}
               <button
                 onClick={pickOutputFolder}
                 className="px-2 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded whitespace-nowrap"
               >
-                {event.output_folder ? "Change" : "Set folder"}
+                {event.output_folder ? t("common.change") : t("process.setFolder")}
               </button>
             </div>
           </Field>
@@ -262,13 +264,13 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
         {/* Summary */}
         {canvasPreset && totalQty > 0 && (
           <p className="text-xs text-neutral-500">
-            <strong className="text-neutral-300">{totalQty} photo{totalQty !== 1 ? "s" : ""}</strong>
+            <strong className="text-neutral-300">{t("common.photos", { count: totalQty })}</strong>
             {" → "}
             <strong className="text-neutral-300">
-              {canvasCount} canvas{canvasCount !== 1 ? "es" : ""}
+              {t("process.canvases", { count: canvasCount })}
             </strong>
-            {" "}({canvasPreset.photos_per_canvas}-up, {canvasPreset.canvas_width_px}×{canvasPreset.canvas_height_px}px
-            {destination === "export" ? `, ${canvasPreset.dpi} DPI` : ""})
+            {" "}({t("process.specUp", { n: canvasPreset.photos_per_canvas, w: canvasPreset.canvas_width_px, h: canvasPreset.canvas_height_px })}
+            {destination === "export" ? t("process.specDpi", { dpi: canvasPreset.dpi }) : ""})
           </p>
         )}
 
@@ -279,14 +281,18 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
             onClick={onClose}
             className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={go}
             disabled={busy || totalQty === 0 || !frameId || !canvasId || (destination === "export" && !event.output_folder)}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium"
           >
-            {busy ? (destination === "print" ? "Composing…" : "Starting…") : destination === "print" ? `Print (${totalQty})` : `Export (${canvasCount} canvas${canvasCount !== 1 ? "es" : ""})`}
+            {busy
+              ? destination === "print" ? t("process.composing") : t("process.starting")
+              : destination === "print"
+                ? t("process.printAction", { count: totalQty })
+                : t("process.exportAction", { count: canvasCount })}
           </button>
         </div>
       </div>
@@ -295,10 +301,11 @@ export default function ProcessDialog({ event, photoQueue, onClose, onEventUpdat
 }
 
 function ExportProgressView({ progress }: { progress: ExportProgress }) {
+  const { t } = useTranslation();
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   return (
     <div className="space-y-4 py-2">
-      <p className="text-sm font-medium text-neutral-200">Exporting…</p>
+      <p className="text-sm font-medium text-neutral-200">{t("process.exporting")}</p>
       <div className="space-y-2">
         <div className="flex justify-between text-xs text-neutral-400">
           <span className="truncate max-w-[70%]">{progress.current_file}</span>

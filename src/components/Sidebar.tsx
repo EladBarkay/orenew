@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CanvasPreset, FramePreset, MagnetEvent, PhotoBatch } from "../types";
 import { batchDisplayPath, parentDir } from "../lib/paths";
 import { EditIcon, TrashIcon } from "./icons";
@@ -34,20 +35,21 @@ export default function Sidebar({
   draggedCanvasId, setDraggedCanvasId, onReorderCanvas,
   onAddCanvas, onEditCanvas, onDeleteCanvas,
 }: Props) {
+  const { t } = useTranslation();
   const [dragOverBatchId, setDragOverBatchId] = useState<string | null>(null);
   const [dragOverFrameId, setDragOverFrameId] = useState<string | null>(null);
   const [dragOverCanvasId, setDragOverCanvasId] = useState<string | null>(null);
 
   return (
-    <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-r border-neutral-700 overflow-y-auto">
-      <Section label="Batches" action={
-        <button onClick={onAddBatch} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+    <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-e border-neutral-700 overflow-y-auto">
+      <Section label={t("sidebar.batches")} action={
+        <button onClick={onAddBatch} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">{t("sidebar.add")}</button>
       }>
         {event.batches.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
-            No batches —{" "}
+            {t("sidebar.noBatches")}{" "}
             <button onClick={onAddBatch} className="text-blue-400 hover:text-blue-300 underline">
-              add a folder
+              {t("sidebar.addFolder")}
             </button>
           </p>
         ) : (
@@ -76,11 +78,11 @@ export default function Sidebar({
                       const { openPath } = await import("@tauri-apps/plugin-opener");
                       await openPath(b.source_path);
                     } catch (e) {
-                      alert(`Could not open folder: ${e}`);
+                      alert(t("common.couldNotOpenFolder", { message: String(e) }));
                     }
                   }}
                   className={[
-                    "w-full text-left px-3 py-1.5 pr-8 text-sm transition-colors cursor-grab",
+                    "w-full text-start px-3 py-1.5 pe-8 text-sm transition-colors cursor-grab",
                     b.id === activeBatch?.id
                       ? "bg-blue-600/20 text-blue-300"
                       : "text-neutral-300 hover:bg-neutral-700/60",
@@ -88,14 +90,14 @@ export default function Sidebar({
                 >
                   <span className="block truncate">{b.name}</span>
                   <span className="block text-[10px] text-neutral-500 truncate" title={b.source_path}>
-                    path: {displayPath}
+                    {t("sidebar.path", { path: displayPath })}
                   </span>
-                  <span className="block text-[10px] text-neutral-600">{b.photos.length} photos</span>
+                  <span className="block text-[10px] text-neutral-600">{t("common.photos", { count: b.photos.length })}</span>
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDeleteBatch(b); }}
-                  title="Remove batch"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title={t("sidebar.removeBatch")}
+                  className="absolute end-1.5 top-1/2 -translate-y-1/2 p-1 text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <TrashIcon className="w-3 h-3" />
                 </button>
@@ -105,14 +107,14 @@ export default function Sidebar({
         )}
       </Section>
 
-      <Section label="Frames" action={
-        <button onClick={onAddFrame} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+      <Section label={t("sidebar.frames")} action={
+        <button onClick={onAddFrame} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">{t("sidebar.add")}</button>
       }>
         {event.frame_presets.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
-            No frames —{" "}
+            {t("sidebar.noFrames")}{" "}
             <button onClick={onAddFrame} className="text-blue-400 hover:text-blue-300 underline">
-              add one
+              {t("sidebar.addOne")}
             </button>
           </p>
         ) : (
@@ -133,23 +135,23 @@ export default function Sidebar({
                   isOver ? "border-t-2 border-blue-500" : "",
                 ].join(" ")}
               >
-                <div className="w-full px-3 py-1.5 pr-16 text-sm text-neutral-300">
+                <div className="w-full px-3 py-1.5 pe-16 text-sm text-neutral-300">
                   <span className="block truncate">{p.name}</span>
                   <span className="block text-[10px] text-neutral-500">
                     {`${p.target_ratio_w}:${p.target_ratio_h}`}
                   </span>
                 </div>
-                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute end-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => { e.stopPropagation(); onEditFrame(p); }}
-                    title="Edit frame preset"
+                    title={t("sidebar.editFrame")}
                     className="p-1 text-neutral-500 hover:text-blue-400"
                   >
                     <EditIcon />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDeleteFrame(p); }}
-                    title="Delete frame preset"
+                    title={t("sidebar.deleteFrame")}
                     className="p-1 text-neutral-500 hover:text-red-400"
                   >
                     <TrashIcon className="w-3 h-3" />
@@ -161,14 +163,14 @@ export default function Sidebar({
         )}
       </Section>
 
-      <Section label="Canvas presets" action={
-        <button onClick={onAddCanvas} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">+ Add</button>
+      <Section label={t("sidebar.canvasPresets")} action={
+        <button onClick={onAddCanvas} className="text-[10px] text-blue-400 hover:text-blue-300 font-medium">{t("sidebar.add")}</button>
       }>
         {event.canvas_presets.length === 0 ? (
           <p className="px-3 py-1 text-xs text-neutral-600">
-            No presets —{" "}
+            {t("sidebar.noPresets")}{" "}
             <button onClick={onAddCanvas} className="text-blue-400 hover:text-blue-300 underline">
-              add one
+              {t("sidebar.addOne")}
             </button>
           </p>
         ) : (
@@ -189,23 +191,23 @@ export default function Sidebar({
                   isOver ? "border-t-2 border-blue-500" : "",
                 ].join(" ")}
               >
-                <div className="w-full px-3 py-1.5 pr-16 text-sm text-neutral-300">
+                <div className="w-full px-3 py-1.5 pe-16 text-sm text-neutral-300">
                   <span className="block truncate">{p.name}</span>
                   <span className="block text-[10px] text-neutral-500">
                     {`${p.canvas_width_px}×${p.canvas_height_px} · ${p.photos_per_canvas}-up`}
                   </span>
                 </div>
-                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute end-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => { e.stopPropagation(); onEditCanvas(p); }}
-                    title="Edit canvas preset"
+                    title={t("sidebar.editCanvas")}
                     className="p-1 text-neutral-500 hover:text-blue-400"
                   >
                     <EditIcon />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDeleteCanvas(p); }}
-                    title="Delete canvas preset"
+                    title={t("sidebar.deleteCanvas")}
                     className="p-1 text-neutral-500 hover:text-red-400"
                   >
                     <TrashIcon className="w-3 h-3" />

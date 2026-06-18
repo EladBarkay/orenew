@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { useFramedPreview } from "../hooks/useFramedPreview";
 import { MagnetEvent, Orientation, Photo } from "../types";
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrientationOverride, onClearOrientationOverride, width }: Props) {
+  const { t } = useTranslation();
   const filename = basename(photo.path);
   const thumb = useThumbnail(photo.path, photo.content_hash);
   const [previewFrameId, setPreviewFrameId] = useState<string | null>(
@@ -50,15 +52,15 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
   return (
     <aside
       style={{ width: width ?? 288 }}
-      className="flex flex-col bg-neutral-800 border-l border-neutral-700 overflow-hidden shrink-0"
+      className="flex flex-col bg-neutral-800 border-s border-neutral-700 overflow-hidden shrink-0"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
         <span className="text-xs font-medium text-neutral-300 truncate">{filename}</span>
         <button
           onClick={onClose}
-          className="ml-2 text-neutral-500 hover:text-neutral-200 text-lg leading-none flex-shrink-0"
-          aria-label="Close preview"
+          className="ms-2 text-neutral-500 hover:text-neutral-200 text-lg leading-none flex-shrink-0"
+          aria-label={t("preview.closePreview")}
         >
           ×
         </button>
@@ -80,21 +82,21 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
 
       {/* Metadata + controls */}
       <div className="px-3 py-3 border-t border-neutral-700 space-y-2 text-xs text-neutral-400">
-        <Row label="Dimensions" value={`${photo.width} × ${photo.height}`} />
+        <Row label={t("preview.dimensions")} value={`${photo.width} × ${photo.height}`} />
 
         {/* Orientation override */}
         <div className="flex items-center justify-between">
-          <span>Orientation{photo.orientation_override ? " (override)" : ""}</span>
+          <span>{photo.orientation_override ? t("preview.orientationOverride") : t("preview.orientation")}</span>
           <div className="flex gap-1">
             <OrientBtn
-              label="L"
-              title="Landscape"
+              label={t("preview.landscapeShort")}
+              title={t("preview.landscape")}
               active={orientation === "landscape"}
               onClick={() => handleOrientClick("landscape")}
             />
             <OrientBtn
-              label="P"
-              title="Portrait"
+              label={t("preview.portraitShort")}
+              title={t("preview.portrait")}
               active={orientation === "portrait"}
               onClick={() => handleOrientClick("portrait")}
             />
@@ -103,13 +105,13 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
 
         {event.frame_presets.length > 0 && (
           <div className="flex items-center justify-between gap-2">
-            <span>Frame</span>
+            <span>{t("preview.frame")}</span>
             <select
               value={previewFrameId ?? ""}
               onChange={(e) => setPreviewFrameId(e.target.value || null)}
               className="text-xs bg-neutral-700 text-neutral-200 rounded px-1.5 py-0.5 border border-neutral-600 max-w-[140px] truncate"
             >
-              <option value="">None</option>
+              <option value="">{t("preview.none")}</option>
               {event.frame_presets.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -117,7 +119,7 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
           </div>
         )}
         <div className="flex items-center justify-between">
-          <span>Exported</span>
+          <span>{t("preview.exported")}</span>
           <span
             className={
               photo.export_count > 0
@@ -125,11 +127,11 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
                 : "text-neutral-600"
             }
           >
-            {photo.export_count === 0 ? "Not exported" : `⬇${photo.export_count}`}
+            {photo.export_count === 0 ? t("preview.notExported") : `⬇${photo.export_count}`}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Printed</span>
+          <span>{t("preview.printed")}</span>
           <span
             className={
               photo.print_count > 0
@@ -137,7 +139,7 @@ export default function PreviewPanel({ event, photo, onClose, frameNonce, onOrie
                 : "text-neutral-600"
             }
           >
-            {photo.print_count === 0 ? "Not printed" : `×${photo.print_count}`}
+            {photo.print_count === 0 ? t("preview.notPrinted") : `×${photo.print_count}`}
           </span>
         </div>
       </div>
