@@ -69,7 +69,7 @@ const he = {
 
   actionBar: {
     clear: "נקה",
-    queuedSummary: "{{copies}} עותקים · {{photos}} תמונות",
+    queuedSummary: "{{photos}} תמונות בנגלה זו · {{copies}} עותקים פעילים",
     fromBatches: "מ-{{n}} נגלות",
   },
 

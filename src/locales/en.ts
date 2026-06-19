@@ -68,7 +68,7 @@ const en = {
 
   actionBar: {
     clear: "Clear",
-    queuedSummary: "{{copies}} copies · {{photos}} photos",
+    queuedSummary: "{{photos}} photos in this batch · {{copies}} active copies",
     fromBatches: "{{n}} batches",
   },
 
