@@ -32,11 +32,16 @@ const en = {
 
   toolbar: {
     openEvent: "Open Event",
+    configureEvent: "Configure event (frame & canvas presets)",
     deleteEvent: "Delete this event",
     export: "Export",
     exportCount: "Export ({{count}})",
     setQuantitiesFirst: "Set quantities on gallery photos first",
     settingsLicense: "Settings & license",
+  },
+
+  eventConfig: {
+    title: "Event presets",
   },
 
   galleryToolbar: {

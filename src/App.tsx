@@ -8,6 +8,7 @@ import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
+import EventConfigDialog from "./components/EventConfigDialog";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
 import BatchTabs from "./components/BatchTabs";
@@ -20,7 +21,7 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "export" | "settings" | null;
+type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
@@ -562,6 +563,7 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         onOpenEvent={openEvent}
+        onConfigureEvent={() => setModal("eventConfig")}
         onDeleteEvent={deleteEvent}
         onSettings={() => setModal("settings")}
       />
@@ -666,6 +668,19 @@ export default function App() {
             setAddingFrame(false);
           }}
           onClose={() => setAddingFrame(false)}
+        />
+      )}
+      {modal === "eventConfig" && event && (
+        <EventConfigDialog
+          event={event}
+          onClose={() => setModal(null)}
+          onEventUpdate={updateEvent}
+          onAddFrame={() => setAddingFrame(true)}
+          onEditFrame={setEditingFrame}
+          onDeleteFrame={deleteFramePreset}
+          onAddCanvas={() => setAddingCanvas(true)}
+          onEditCanvas={setEditingCanvas}
+          onDeleteCanvas={deleteCanvasPreset}
         />
       )}
       {modal === "settings" && (

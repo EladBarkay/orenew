@@ -33,11 +33,16 @@ const he = {
 
   toolbar: {
     openEvent: "פתיחת אירוע",
+    configureEvent: "הגדרת האירוע (מסגרת וקנבס)",
     deleteEvent: "מחיקת האירוע הזה",
     export: "ייצוא",
     exportCount: "ייצוא ({{count}})",
     setQuantitiesFirst: "הגדר כמויות על התמונות בגלריה תחילה",
     settingsLicense: "הגדרות ורישיון",
+  },
+
+  eventConfig: {
+    title: "הגדרות קבועות של האירוע",
   },
 
   galleryToolbar: {

@@ -40,6 +40,15 @@ export function SettingsIcon({ className = "w-4 h-4" }: IconProps) {
   );
 }
 
+export function SlidersIcon({ className = "w-4 h-4" }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="4" y1="8" x2="20" y2="8" /><circle cx="9" cy="8" r="2" fill="currentColor" stroke="none" />
+      <line x1="4" y1="16" x2="20" y2="16" /><circle cx="15" cy="16" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function TrashIcon({ className = "w-4 h-4" }: IconProps) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">

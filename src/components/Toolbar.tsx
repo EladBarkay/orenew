@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Entitlement, MagnetEvent } from "../types";
-import { MagnetLogo, SettingsIcon, TrashIcon } from "./icons";
+import { MagnetLogo, SettingsIcon, SlidersIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
 
 type Props = {
@@ -9,13 +9,14 @@ type Props = {
   status: string;
   totalPhotos: number;
   onOpenEvent: () => void;
+  onConfigureEvent: () => void;
   onDeleteEvent: () => void;
   onSettings: () => void;
 };
 
 export default function Toolbar({
   event, entitlement, status, totalPhotos,
-  onOpenEvent, onDeleteEvent, onSettings,
+  onOpenEvent, onConfigureEvent, onDeleteEvent, onSettings,
 }: Props) {
   const { t } = useTranslation();
   const tier = entitlement?.tier ?? "free";
@@ -34,6 +35,14 @@ export default function Toolbar({
         <>
           <span className="text-neutral-300 text-sm font-medium">{event.name}</span>
           <span className="text-neutral-500 text-xs">{t("common.photos", { count: totalPhotos })}</span>
+
+          <button
+            onClick={onConfigureEvent}
+            title={t("toolbar.configureEvent")}
+            className="text-neutral-400 hover:text-accent transition-colors"
+          >
+            <SlidersIcon />
+          </button>
 
           <button
             onClick={onDeleteEvent}
