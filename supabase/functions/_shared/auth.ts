@@ -1,7 +1,7 @@
 // Shared helpers for the entitlement Edge Functions: a service-role Supabase
 // client (bypasses RLS) and resolution of the caller from their access token.
 
-import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export const TOKEN_TTL_SECONDS = 14 * 24 * 60 * 60; // 14-day offline grace ceiling
 
@@ -25,7 +25,10 @@ export function admin(): SupabaseClient {
 export type Caller = { id: string; email: string | null };
 
 /** Validate the request's bearer token and return the authenticated user. */
-export async function requireCaller(req: Request, sb: SupabaseClient): Promise<Caller> {
+export async function requireCaller(
+  req: Request,
+  sb: SupabaseClient,
+): Promise<Caller> {
   const authz = req.headers.get("Authorization") ?? "";
   const token = authz.replace(/^Bearer\s+/i, "");
   if (!token) throw new HttpError(401, "missing access token");

@@ -9,13 +9,15 @@ function base64urlEncode(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function pemToDer(pem: string): Uint8Array {
+function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
   const body = pem
     .replace(/-----BEGIN [^-]+-----/, "")
     .replace(/-----END [^-]+-----/, "")
     .replace(/\s+/g, "");
   const bin = atob(body);
-  const der = new Uint8Array(bin.length);
+  // Back the array with a concrete ArrayBuffer so it satisfies the Web Crypto
+  // `BufferSource` typing (which rejects the looser `ArrayBufferLike`).
+  const der = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
   return der;
 }
@@ -47,11 +49,12 @@ export type EntitlementClaims = {
 };
 
 /** Sign the claims into a compact EdDSA JWS. */
-export async function signEntitlementToken(claims: EntitlementClaims): Promise<string> {
+export async function signEntitlementToken(
+  claims: EntitlementClaims,
+): Promise<string> {
   const header = { alg: "EdDSA", typ: "JWT" };
   const enc = new TextEncoder();
-  const signingInput =
-    base64urlEncode(enc.encode(JSON.stringify(header))) +
+  const signingInput = base64urlEncode(enc.encode(JSON.stringify(header))) +
     "." +
     base64urlEncode(enc.encode(JSON.stringify(claims)));
 

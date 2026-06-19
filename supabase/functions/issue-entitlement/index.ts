@@ -51,7 +51,10 @@ Deno.serve(async (req) => {
 
     if (!known && (devices ?? []).length >= limit) {
       // At the seat limit — caller must disconnect a device first.
-      return json({ error: "device_limit_reached", devices: devices ?? [] }, 409);
+      return json(
+        { error: "device_limit_reached", devices: devices ?? [] },
+        409,
+      );
     }
 
     // Register (or refresh) this device.
@@ -67,7 +70,9 @@ Deno.serve(async (req) => {
         },
         { onConflict: "user_id,device_hash" },
       );
-    if (upsertErr) throw new HttpError(500, `device upsert failed: ${upsertErr.message}`);
+    if (upsertErr) {
+      throw new HttpError(500, `device upsert failed: ${upsertErr.message}`);
+    }
 
     const iat = Math.floor(Date.now() / 1000);
     const token = await signEntitlementToken({
