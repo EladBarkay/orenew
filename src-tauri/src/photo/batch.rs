@@ -142,6 +142,9 @@ mod tests {
             print_count: 0,
             save_count: 0,
             content_hash: String::new(),
+            size_bytes: 0,
+            created: 0,
+            modified: 0,
         }
     }
 

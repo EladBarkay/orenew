@@ -21,6 +21,7 @@ import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
 type ModalKind = "export" | "settings" | null;
+export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
   const { t } = useTranslation();
@@ -42,6 +43,8 @@ export default function App() {
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
@@ -291,8 +294,18 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
-  // When "hide empty" is on, drop photos queued for 0 copies from the grid.
-  const visiblePhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  // When "hide empty" is on, drop photos queued for 0 copies from the grid, then
+  // sort by the chosen key/direction (name uses path order, which the backend
+  // already produces, so the default is a no-op).
+  const filteredPhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  const visiblePhotos = [...filteredPhotos].sort((a, b) => {
+    const c =
+      sortKey === "name" ? a.path.localeCompare(b.path) :
+      sortKey === "size" ? a.size_bytes - b.size_bytes :
+      sortKey === "created" ? a.created - b.created :
+      a.modified - b.modified;
+    return c * sortDir;
+  });
 
   // Batch actions act on the selection, or the whole batch when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.id);
@@ -568,6 +581,10 @@ export default function App() {
             onToggleHideEmpty={() => setHideEmpty((v) => !v)}
             cellSize={cellSize}
             onZoom={zoomCell}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortKey={setSortKey}
+            onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
           />
 
           <div className="flex flex-1 overflow-hidden">

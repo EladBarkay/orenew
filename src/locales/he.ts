@@ -53,6 +53,13 @@ const he = {
   view: {
     zoomIn: "תמונות ממוזערות גדולות יותר",
     zoomOut: "תמונות ממוזערות קטנות יותר",
+    sortBy: "מיון לפי",
+    sortName: "שם",
+    sortCreated: "תאריך יצירה",
+    sortModified: "תאריך שינוי",
+    sortSize: "גודל קובץ",
+    sortAsc: "סדר עולה",
+    sortDesc: "סדר יורד",
   },
 
   actionBar: {

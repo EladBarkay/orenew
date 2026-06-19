@@ -180,7 +180,14 @@ fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> (Vec<Photo>, Vec<U
     let photos = scanned
         .into_iter()
         .map(|new_p| match existing_map.remove(&new_p.path) {
-            Some(old) if old.content_hash == new_p.content_hash => old,
+            // Unchanged content: keep user data, but refresh file metadata so
+            // sorting works (and back-fills events saved before these fields existed).
+            Some(old) if old.content_hash == new_p.content_hash => Photo {
+                size_bytes: new_p.size_bytes,
+                created: new_p.created,
+                modified: new_p.modified,
+                ..old
+            },
             Some(old) => {
                 changed_ids.push(old.id);
                 Photo {
@@ -215,6 +222,9 @@ mod tests {
             print_count: 5,
             save_count: 0,
             content_hash: hash.to_string(),
+            size_bytes: 0,
+            created: 0,
+            modified: 0,
         }
     }
 

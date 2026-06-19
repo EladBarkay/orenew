@@ -52,6 +52,13 @@ const en = {
   view: {
     zoomIn: "Larger thumbnails",
     zoomOut: "Smaller thumbnails",
+    sortBy: "Sort by",
+    sortName: "Name",
+    sortCreated: "Date created",
+    sortModified: "Date modified",
+    sortSize: "File size",
+    sortAsc: "Ascending",
+    sortDesc: "Descending",
   },
 
   actionBar: {
