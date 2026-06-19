@@ -57,6 +57,7 @@ const en = {
   actionBar: {
     clear: "Clear",
     queuedSummary: "{{copies}} copies · {{photos}} photos",
+    fromBatches: "{{n}} batches",
   },
 
   sidebar: {

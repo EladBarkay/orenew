@@ -58,6 +58,7 @@ const he = {
   actionBar: {
     clear: "נקה",
     queuedSummary: "{{copies}} עותקים · {{photos}} תמונות",
+    fromBatches: "מ-{{n}} נגלות",
   },
 
   sidebar: {
