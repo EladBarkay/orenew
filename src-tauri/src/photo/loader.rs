@@ -92,6 +92,7 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
     let xmp_path = xmp_path_for(&path);
     let content_hash = compute_content_hash(&path, xmp_path.as_deref())?;
     let exif_orientation = read_exif_orientation(&path);
+    let (size_bytes, created, modified) = file_times(&path);
     Ok(Photo {
         id: Uuid::new_v4(),
         path,
@@ -103,7 +104,24 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         print_count: 0,
         save_count: 0,
         content_hash,
+        size_bytes,
+        created,
+        modified,
     })
+}
+
+/// File size + created/modified as epoch seconds for gallery sorting. Best-effort:
+/// any unavailable value (platform/fs limitation) falls back to 0.
+fn file_times(path: &Path) -> (u64, u64, u64) {
+    use std::time::UNIX_EPOCH;
+    let Ok(meta) = std::fs::metadata(path) else { return (0, 0, 0) };
+    let secs = |t: std::io::Result<std::time::SystemTime>| {
+        t.ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    };
+    (meta.len(), secs(meta.created()), secs(meta.modified()))
 }
 
 #[cfg(test)]

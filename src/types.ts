@@ -18,6 +18,9 @@ export type Photo = {
   print_count: number;
   save_count: number;
   content_hash: string;
+  size_bytes: number;
+  created: number;
+  modified: number;
 };
 
 export type PhotoBatch = {
@@ -65,4 +68,5 @@ export type MagnetEvent = {
   canvas_presets: CanvasPreset[];
   output_folder: string | null;
   active_frame_preset_id: string | null;
+  active_canvas_preset_id: string | null;
 };

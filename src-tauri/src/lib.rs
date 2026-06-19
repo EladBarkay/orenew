@@ -85,6 +85,16 @@ fn dev_auth_state() -> Option<AuthState> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ponytail: WebView2 (Windows) eats trackpad pinch for its own content zoom,
+    // so the gesture never reaches the page. `--disable-pinch` turns that off so
+    // Chromium forwards pinch as wheel+ctrl events, which the gallery already maps
+    // to thumbnail size. Set before any webview is created. Windows-only; no effect
+    // on the WebKitGTK/macOS builds. Needs on-device verification.
+    #[cfg(target_os = "windows")]
+    if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-pinch");
+    }
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     // Single-instance must be the FIRST plugin. With the deep-link feature it
@@ -165,6 +175,7 @@ pub fn run() {
             commands::project::refresh_batch,
             commands::project::sync_watches,
             commands::gallery::get_thumbnail,
+            commands::gallery::get_frame_thumbnail,
             commands::gallery::get_framed_preview,
             commands::gallery::clear_framed_preview_cache,
             commands::gallery::set_orientation_override,

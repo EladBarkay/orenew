@@ -72,5 +72,8 @@ pub async fn delete_canvas_preset(
 ) -> Result<(), String> {
     let mut event = state.store.load(event_id).tauri()?;
     event.canvas_presets.retain(|p| p.id != preset_id);
+    if event.active_canvas_preset_id == Some(preset_id) {
+        event.active_canvas_preset_id = event.canvas_presets.first().map(|p| p.id);
+    }
     state.store.save(&event).tauri()
 }

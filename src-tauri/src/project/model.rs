@@ -14,6 +14,9 @@ pub struct Event {
     pub canvas_presets: Vec<CanvasPreset>,
     pub output_folder: Option<PathBuf>,
     pub active_frame_preset_id: Option<Uuid>,
+    /// Last-used canvas preset; restored on reload (default keeps old magnet.json valid).
+    #[serde(default)]
+    pub active_canvas_preset_id: Option<Uuid>,
 }
 
 impl Event {
@@ -27,6 +30,7 @@ impl Event {
             canvas_presets: Vec::new(),
             output_folder: None,
             active_frame_preset_id: None,
+            active_canvas_preset_id: None,
         }
     }
 
@@ -113,6 +117,14 @@ pub struct Photo {
     #[serde(default)]
     pub save_count: u32,
     pub content_hash: String,
+    // File metadata for gallery sorting. Epoch seconds; 0 when unknown (e.g. old
+    // events or platforms without created-time). Derived from the file, not user data.
+    #[serde(default)]
+    pub size_bytes: u64,
+    #[serde(default)]
+    pub created: u64,
+    #[serde(default)]
+    pub modified: u64,
 }
 
 impl Photo {
@@ -205,6 +217,9 @@ mod tests {
             print_count: 0,
             save_count: 0,
             content_hash: String::new(),
+            size_bytes: 0,
+            created: 0,
+            modified: 0,
         }
     }
 

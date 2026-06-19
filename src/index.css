@@ -1,12 +1,36 @@
 @import "tailwindcss";
 
+/* Redesign tokens. Indigo accent (#5B5BD6, the logo color) replaces blue-600 as the
+   single primary/selection accent. Surfaces use Tailwind's neutral scale (neutral-950
+   base, 900/850/800 raised). Defining colors in @theme exposes them as utilities:
+   bg-accent, hover:bg-accent-hover, ring-accent, text-accent, border-accent, ... */
+@theme {
+  --color-accent: #5b5bd6;
+  --color-accent-hover: #6e6ee0;
+  --color-accent-active: #4b4bc4;
+  --color-accent-fg: #ffffff;
+  /* one extra raised step between neutral-900 and -800 for layered dark surfaces */
+  --color-neutral-850: #1c1c1f;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background: #111;
+  background: #0a0a0b;
   color: #f0f0f0;
+}
+
+/* Fast, cheap motion default for interactive surfaces that opt in via .transition-* */
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }

@@ -32,11 +32,16 @@ const en = {
 
   toolbar: {
     openEvent: "Open Event",
+    configureEvent: "Configure event (frame & canvas presets)",
     deleteEvent: "Delete this event",
     export: "Export",
     exportCount: "Export ({{count}})",
     setQuantitiesFirst: "Set quantities on gallery photos first",
     settingsLicense: "Settings & license",
+  },
+
+  eventConfig: {
+    title: "Event presets",
   },
 
   galleryToolbar: {
@@ -47,6 +52,24 @@ const en = {
     scanning: "Scanning…",
     suggestCopiesTitle: "Set each photo's copies to the number of faces detected",
     hideEmpty: "Hide cards with no copies",
+  },
+
+  view: {
+    zoomIn: "Larger thumbnails",
+    zoomOut: "Smaller thumbnails",
+    sortBy: "Sort by",
+    sortName: "Name",
+    sortCreated: "Date created",
+    sortModified: "Date modified",
+    sortSize: "File size",
+    sortAsc: "Ascending",
+    sortDesc: "Descending",
+  },
+
+  actionBar: {
+    clear: "Clear",
+    queuedSummary: "{{photos}} photos in this batch · {{copies}} active copies",
+    fromBatches: "{{n}} batches",
   },
 
   sidebar: {
@@ -154,7 +177,8 @@ const en = {
     width: "Width (px)",
     height: "Height (px)",
     photosPerCanvas: "Photos / canvas",
-    gridColsRows: "Grid cols × rows",
+    gridColsRows: "Grid",
+    gridAuto: "{{cols}} × {{rows}} (auto)",
     dpi: "DPI",
     saving: "Saving…",
     savePreset: "Save preset",

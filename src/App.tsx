@@ -3,15 +3,16 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
-import PreviewPanel from "./components/PreviewPanel";
+import Lightbox from "./components/Lightbox";
 import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
+import EventConfigDialog from "./components/EventConfigDialog";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
-import GalleryToolbar from "./components/GalleryToolbar";
-import Sidebar from "./components/Sidebar";
+import BatchTabs from "./components/BatchTabs";
+import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
@@ -20,31 +21,39 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "export" | "addFrame" | "addCanvas" | "settings" | null;
+type ModalKind = "export" | "settings" | "eventConfig" | null;
+export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [event, setEvent] = useState<MagnetEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
-  const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
-  const [draggedCanvasId, setDraggedCanvasId] = useState<string | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
+  // Add-preset modals stack over the Export dialog (which manages presets), so they
+  // get their own state instead of sharing the single `modal` slot.
+  const [addingFrame, setAddingFrame] = useState(false);
+  const [addingCanvas, setAddingCanvas] = useState(false);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
   // drives the preview + shift-range anchor.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Full-screen review is a distinct mode from selection: a plain click opens it,
+  // while Ctrl/Shift clicks only multi-select (for bulk copies) without opening it.
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const anchorRef = useRef<string | null>(null);
   // Photo ids the queue has already seeded. New photos that appear later (file
   // watcher) get a default qty of 1; photos the user zeroed stay "seen" so they
@@ -56,8 +65,6 @@ export default function App() {
     setSelectedIds(new Set());
     anchorRef.current = null;
   }
-  const [previewWidth, setPreviewWidth] = useState(288);
-  const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const colCountRef = useRef(1);
 
   // Block the webview reload shortcuts — a reload wipes the in-memory event and
@@ -213,24 +220,6 @@ export default function App() {
     invoke("save_event", { event: updated }).catch(() => {});
   }
 
-  function reorderFramePreset(targetId: string) {
-    if (!event) return;
-    const frame_presets = reorderById(event.frame_presets, draggedFrameId, targetId);
-    if (!frame_presets) return;
-    const updated = { ...event, frame_presets };
-    setEvent(updated);
-    invoke("save_event", { event: updated }).catch(() => {});
-  }
-
-  function reorderCanvasPreset(targetId: string) {
-    if (!event) return;
-    const canvas_presets = reorderById(event.canvas_presets, draggedCanvasId, targetId);
-    if (!canvas_presets) return;
-    const updated = { ...event, canvas_presets };
-    setEvent(updated);
-    invoke("save_event", { event: updated }).catch(() => {});
-  }
-
   async function deleteCanvasPreset(preset: CanvasPreset) {
     if (!event) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
@@ -306,8 +295,18 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
-  // When "hide empty" is on, drop photos queued for 0 copies from the grid.
-  const visiblePhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  // When "hide empty" is on, drop photos queued for 0 copies from the grid, then
+  // sort by the chosen key/direction (name uses path order, which the backend
+  // already produces, so the default is a no-op).
+  const filteredPhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  const visiblePhotos = [...filteredPhotos].sort((a, b) => {
+    const c =
+      sortKey === "name" ? a.path.localeCompare(b.path) :
+      sortKey === "size" ? a.size_bytes - b.size_bytes :
+      sortKey === "created" ? a.created - b.created :
+      a.modified - b.modified;
+    return c * sortDir;
+  });
 
   // Batch actions act on the selection, or the whole batch when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.id);
@@ -316,6 +315,22 @@ export default function App() {
     ? Object.fromEntries(Object.entries(photoQueue).filter(([id]) => selectedIds.has(id)))
     : photoQueue;
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
+
+  // Export indicator: which batches contribute to the (effective) queue + a few
+  // thumbnails. The queue is global, so a queued photo can live in any batch —
+  // make that scope visible next to the Export button.
+  const queuedIds = Object.keys(effectiveQueue).filter((id) => (effectiveQueue[id] ?? 0) > 0);
+  const idToPhoto = new Map<string, Photo>();
+  const idToBatch = new Map<string, string>();
+  for (const b of event?.batches ?? []) {
+    for (const p of b.photos) { idToPhoto.set(p.id, p); idToBatch.set(p.id, b.name); }
+  }
+  const exportBatchCount = new Set(queuedIds.map((id) => idToBatch.get(id)).filter(Boolean)).size;
+  const exportThumbs = queuedIds
+    .slice(0, 3)
+    .map((id) => idToPhoto.get(id))
+    .filter((p): p is Photo => !!p)
+    .map((p) => ({ path: p.path, hash: p.content_hash }));
 
   // Suggest per-photo export quantities = number of faces detected. Heavy, so
   // it runs on user click (not automatically) with a live progress count. Scans
@@ -372,9 +387,16 @@ export default function App() {
       });
       anchorRef.current = id;
     } else {
+      // Plain click selects just this photo. Double-click opens the full-screen
+      // review (see handlePhotoDoubleClick) — single click no longer opens it.
       setSelectedIds(new Set([id]));
       anchorRef.current = id;
     }
+  }
+
+  function handlePhotoDoubleClick(photo: Photo) {
+    setSelected(photo);
+    setLightboxOpen(true);
   }
 
   // Ctrl/Cmd+A selects every photo currently shown in the grid.
@@ -393,6 +415,22 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeBatch, visiblePhotos]);
 
+  // Ctrl+Tab / Ctrl+Shift+Tab cycle through batches (wrap around). Selection +
+  // queue persist (combine across batches), same as clicking a tab.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== "Tab") return;
+      if (!event || event.batches.length < 2) return;
+      e.preventDefault();
+      const n = event.batches.length;
+      const idx = event.batches.findIndex((b) => b.id === activeBatch?.id);
+      const nextIdx = e.shiftKey ? (idx - 1 + n) % n : (idx + 1) % n;
+      setActiveBatch(event.batches[nextIdx]);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [event, activeBatch]);
+
   // Derive uniform qty across the targeted photos — 0 if empty or mixed values.
   const targetQtys = targetIds.map((id) => photoQueue[id] ?? 0);
   const allQty = targetQtys.length > 0 && targetQtys.every((q) => q === targetQtys[0])
@@ -409,20 +447,47 @@ export default function App() {
         if (idx < 0) return;
         const cols = colCountRef.current;
         let next = idx;
-        if (e.key === "ArrowRight") next = Math.min(visiblePhotos.length - 1, idx + 1);
-        else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-        else if (e.key === "ArrowDown") next = Math.min(visiblePhotos.length - 1, idx + cols);
-        else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
+        // Under RTL the visual left/right are mirrored, so ArrowRight should move to
+        // the previous photo and ArrowLeft to the next (matching the gallery flow).
+        const rtl = i18n.dir() === "rtl";
+        const fwd = rtl ? -1 : 1; // ArrowRight delta
+        // In the lightbox only left/right make sense (the grid rows are hidden, so
+        // up/down would jump unpredictably). Over the grid all four navigate.
+        const clamp = (n: number) => Math.min(visiblePhotos.length - 1, Math.max(0, n));
+        if (e.key === "ArrowRight") next = clamp(idx + fwd);
+        else if (e.key === "ArrowLeft") next = clamp(idx - fwd);
+        else if (e.key === "ArrowDown") next = lightboxOpen ? idx : clamp(idx + cols);
+        else if (e.key === "ArrowUp") next = lightboxOpen ? idx : clamp(idx - cols);
         const nextPhoto = visiblePhotos[next];
         setSelected(nextPhoto);
-        setSelectedIds(new Set([nextPhoto.id]));
+        if (!lightboxOpen) setSelectedIds(new Set([nextPhoto.id]));
         anchorRef.current = nextPhoto.id;
       }
-      if (e.key === "Escape") setSelected(null);
+      if (e.key === "Enter") setLightboxOpen(true);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected, visiblePhotos]);
+  }, [selected, visiblePhotos, lightboxOpen]);
+
+  // Escape: close the lightbox, else clear the selection. Kept separate from the
+  // arrow/Enter nav effect above (which is gated on `selected`) so Esc still works
+  // after Ctrl+A — that sets selectedIds without setting `selected`.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (lightboxOpen) setLightboxOpen(false);
+      else clearSelection();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxOpen]);
+
+  // Grid cell size, shared by the BatchTabs −/+ buttons and the Ctrl+wheel /
+  // Ctrl+± handlers above (same clamp 100–280, step 20).
+  const zoomCell = (dir: 1 | -1) =>
+    setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
 
   function adjustQty(photoId: string, delta: number) {
     setPhotoQueue((prev) => {
@@ -500,121 +565,105 @@ export default function App() {
     });
   }
 
-  function onDividerMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    previewDragRef.current = { startX: e.clientX, startWidth: previewWidth };
-    // The preview sits at the inline-end edge: in LTR that's the right (dragging
-    // left grows it), in RTL it's the left (dragging right grows it).
-    const rtl = document.documentElement.dir === "rtl";
-    const onMove = (ev: MouseEvent) => {
-      if (!previewDragRef.current) return;
-      const moved = previewDragRef.current.startX - ev.clientX;
-      const delta = rtl ? -moved : moved;
-      setPreviewWidth(Math.max(240, Math.min(640, previewDragRef.current.startWidth + delta)));
-    };
-    const onUp = () => {
-      previewDragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+  // Lightbox prev/next over the currently visible photos.
+  const selIdx = selected ? visiblePhotos.findIndex((p) => p.id === selected.id) : -1;
+  function goAdjacent(dir: -1 | 1) {
+    if (selIdx < 0) return;
+    const next = visiblePhotos[selIdx + dir];
+    if (!next) return;
+    setSelected(next);
+    setSelectedIds(new Set([next.id]));
+    anchorRef.current = next.id;
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-900 text-neutral-100 select-none">
+    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 select-none">
       <Toolbar
         event={event}
         entitlement={entitlement}
         status={status}
         totalPhotos={totalPhotos}
-        queuedTotal={queuedTotal}
         onOpenEvent={openEvent}
+        onConfigureEvent={() => setModal("eventConfig")}
         onDeleteEvent={deleteEvent}
-        onExport={() => setModal("export")}
         onSettings={() => setModal("settings")}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        {event ? (
-          <Sidebar
+      {event ? (
+        <>
+          <BatchTabs
             event={event}
             activeBatch={activeBatch}
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); /* keep photoQueue; effect seeds new photos */ }}
+            onSelectBatch={(b) => { setActiveBatch(b); /* keep selection + photoQueue; counts combine across batches */ }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
-            draggedFrameId={draggedFrameId}
-            setDraggedFrameId={setDraggedFrameId}
-            onReorderFrame={reorderFramePreset}
-            onAddFrame={() => setModal("addFrame")}
-            onEditFrame={setEditingFrame}
-            onDeleteFrame={deleteFramePreset}
-            draggedCanvasId={draggedCanvasId}
-            setDraggedCanvasId={setDraggedCanvasId}
-            onReorderCanvas={reorderCanvasPreset}
-            onAddCanvas={() => setModal("addCanvas")}
-            onEditCanvas={setEditingCanvas}
-            onDeleteCanvas={deleteCanvasPreset}
+            hideEmpty={hideEmpty}
+            onToggleHideEmpty={() => setHideEmpty((v) => !v)}
+            cellSize={cellSize}
+            onZoom={zoomCell}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortKey={setSortKey}
+            onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
           />
-        ) : (
-          <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-e border-neutral-700">
-            <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs p-4 text-center">
-              {t("app.openToBegin")}
-            </div>
-          </aside>
-        )}
 
-        {event ? (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            {activeBatch && activeBatch.photos.length > 0 && (
-              <GalleryToolbar
-                selectedCount={selectedIds.size}
-                allQty={allQty}
-                hideEmpty={hideEmpty}
-                scanning={scanning}
-                scanProgress={scanProgress}
-                onSetAllQty={handleSetAllQty}
-                onScanFaces={scanFaces}
-                onToggleHideEmpty={() => setHideEmpty((v) => !v)}
-              />
-            )}
-            <div className="flex flex-1 overflow-hidden">
-              <Gallery
-                photos={visiblePhotos}
-                selectedId={selected?.id ?? null}
-                selectedIds={selectedIds}
-                onPhotoClick={handlePhotoClick}
-                photoQueue={photoQueue}
-                onQtyDelta={adjustQty}
-                cellSize={cellSize}
-                onColCountChange={(n) => { colCountRef.current = n; }}
-              />
-              {selected && (
-                <>
-                  <div
-                    onMouseDown={onDividerMouseDown}
-                    className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
-                  />
-                  <PreviewPanel
-                    event={event}
-                    photo={selected}
-                    onClose={() => setSelected(null)}
-                    frameNonce={frameNonce}
-                    onOrientationOverride={(id, o) => setOrientation(id, o)}
-                    onClearOrientationOverride={(id) => setOrientation(id, null)}
-                    width={previewWidth}
-                  />
-                </>
-              )}
-            </div>
+          <div className="flex flex-1 overflow-hidden">
+            <Gallery
+              photos={visiblePhotos}
+              selectedId={selected?.id ?? null}
+              selectedIds={selectedIds}
+              onPhotoClick={handlePhotoClick}
+              onPhotoDoubleClick={handlePhotoDoubleClick}
+              onBackgroundClick={clearSelection}
+              photoQueue={photoQueue}
+              onQtyDelta={adjustQty}
+              cellSize={cellSize}
+              onColCountChange={(n) => { colCountRef.current = n; }}
+            />
           </div>
-        ) : (
-          <EmptyState onOpen={openEvent} />
-        )}
-      </div>
+
+          {activeBatch && activeBatch.photos.length > 0 && (
+            <ActionBar
+              queuedTotal={queuedTotal}
+              visibleCount={visiblePhotos.length}
+              selectedCount={selectedIds.size}
+              allQty={allQty}
+              scanning={scanning}
+              scanProgress={scanProgress}
+              exportBatchCount={exportBatchCount}
+              exportThumbs={exportThumbs}
+              onSetAllQty={handleSetAllQty}
+              onScanFaces={scanFaces}
+              onClearSelection={clearSelection}
+              onExport={() => setModal("export")}
+            />
+          )}
+
+          {lightboxOpen && selected && (
+            <Lightbox
+              event={event}
+              photo={selected}
+              onClose={() => setLightboxOpen(false)}
+              frameNonce={frameNonce}
+              onOrientationOverride={(id, o) => setOrientation(id, o)}
+              onClearOrientationOverride={(id) => setOrientation(id, null)}
+              onPrev={() => goAdjacent(-1)}
+              onNext={() => goAdjacent(1)}
+              hasPrev={selIdx > 0}
+              hasNext={selIdx >= 0 && selIdx < visiblePhotos.length - 1}
+              qty={photoQueue[selected.id] ?? 0}
+              onQtyDelta={adjustQty}
+              photos={visiblePhotos}
+              onJump={(p) => { setSelected(p); setSelectedIds(new Set([p.id])); anchorRef.current = p.id; }}
+            />
+          )}
+        </>
+      ) : (
+        <EmptyState onOpen={openEvent} />
+      )}
 
       {/* Modals */}
       {modal === "export" && event && (
@@ -624,17 +673,36 @@ export default function App() {
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onExported={handleExported}
+          onAddFrame={() => setAddingFrame(true)}
+          onEditFrame={setEditingFrame}
+          onDeleteFrame={deleteFramePreset}
+          onAddCanvas={() => setAddingCanvas(true)}
+          onEditCanvas={setEditingCanvas}
+          onDeleteCanvas={deleteCanvasPreset}
         />
       )}
-      {modal === "addFrame" && event && (
+      {addingFrame && event && (
         <FramePresetDialog
           event={event}
           onCreated={(updatedEvent) => {
             updateEvent(updatedEvent);
             invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
-            setModal(null);
+            setAddingFrame(false);
           }}
+          onClose={() => setAddingFrame(false)}
+        />
+      )}
+      {modal === "eventConfig" && event && (
+        <EventConfigDialog
+          event={event}
           onClose={() => setModal(null)}
+          onEventUpdate={updateEvent}
+          onAddFrame={() => setAddingFrame(true)}
+          onEditFrame={setEditingFrame}
+          onDeleteFrame={deleteFramePreset}
+          onAddCanvas={() => setAddingCanvas(true)}
+          onEditCanvas={setEditingCanvas}
+          onDeleteCanvas={deleteCanvasPreset}
         />
       )}
       {modal === "settings" && (
@@ -644,12 +712,12 @@ export default function App() {
           onEntitlementChange={setEntitlement}
         />
       )}
-      {modal === "addCanvas" && event && (
-        <Modal onClose={() => setModal(null)}>
+      {addingCanvas && event && (
+        <Modal onClose={() => setAddingCanvas(false)}>
           <CanvasPresetForm
             event={event}
-            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setModal(null); }}
-            onCancel={() => setModal(null)}
+            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setAddingCanvas(false); }}
+            onCancel={() => setAddingCanvas(false)}
           />
         </Modal>
       )}

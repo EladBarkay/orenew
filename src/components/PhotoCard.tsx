@@ -10,6 +10,7 @@ type Props = {
   /** The last-clicked photo (preview/anchor) — stronger ring. */
   active: boolean;
   onClick: (e: React.MouseEvent) => void;
+  onDoubleClick: () => void;
   cellSize: number;
   /** Number queued for the next process run. */
   qty: number;
@@ -17,27 +18,28 @@ type Props = {
   onQtyDelta: (delta: number) => void;
 };
 
-function PhotoCard({ photo, selected, active, onClick, cellSize, qty, onQtyDelta }: Props) {
+function PhotoCard({ photo, selected, active, onClick, onDoubleClick, cellSize, qty, onQtyDelta }: Props) {
   const src = useThumbnail(photo.path, photo.content_hash);
   const filename = basename(photo.path);
 
   return (
     <div
+      data-card
       className={[
-        "relative w-full h-full rounded overflow-hidden group",
-        "transition-all duration-100",
+        "relative w-full h-full rounded-lg overflow-hidden group",
+        "transition-all duration-150",
         // Dim photos queued for 0 copies and not selected — won't be printed/exported.
         qty === 0 && !selected ? "opacity-40 hover:opacity-100" : "",
         active
-          ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-neutral-900"
+          ? "ring-2 ring-accent ring-offset-1 ring-offset-neutral-950"
           : selected
-          ? "ring-2 ring-blue-500/70"
-          : "hover:ring-1 hover:ring-neutral-500 hover:ring-offset-1 hover:ring-offset-neutral-900",
+          ? "ring-2 ring-accent/70"
+          : "hover:ring-1 hover:ring-neutral-600 hover:ring-offset-1 hover:ring-offset-neutral-950",
       ].join(" ")}
       title={filename}
     >
-      {/* Thumbnail (click selects) */}
-      <button onClick={onClick} className="block w-full h-full focus:outline-none">
+      {/* Thumbnail (click selects, double-click opens the full-screen review) */}
+      <button onClick={onClick} onDoubleClick={onDoubleClick} className="block w-full h-full focus:outline-none">
         {src ? (
           <img
             src={src}

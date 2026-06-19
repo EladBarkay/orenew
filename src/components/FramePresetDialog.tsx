@@ -5,6 +5,7 @@ import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { FramePreset, MagnetEvent } from "../types";
 import { Modal, Field, PathPicker } from "./ui";
 import { useAsyncForm } from "../hooks/useAsyncForm";
+import { useFrameThumbnail } from "../hooks/useFrameThumbnail";
 
 type Props = {
   event: MagnetEvent;
@@ -83,26 +84,36 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t("framePreset.namePlaceholder")}
-            className="w-full bg-neutral-800 rounded px-3 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-neutral-600"
+            className="w-full bg-neutral-800 rounded px-3 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-neutral-600"
           />
         </Field>
 
         {/* Landscape frame */}
         <Field label={t("framePreset.landscapeFrame")}>
-          <PathPicker
-            path={landscapePath}
-            placeholder={t("framePreset.pickLandscape")}
-            onPick={() => pickPng(setLandscapePath)}
-          />
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <PathPicker
+                path={landscapePath}
+                placeholder={t("framePreset.pickLandscape")}
+                onPick={() => pickPng(setLandscapePath)}
+              />
+            </div>
+            <FramePreview path={landscapePath} className="w-24 aspect-[4/3]" />
+          </div>
         </Field>
 
         {/* Portrait frame */}
         <Field label={t("framePreset.portraitFrame")}>
-          <PathPicker
-            path={portraitPath}
-            placeholder={t("framePreset.pickPortrait")}
-            onPick={() => pickPng(setPortraitPath)}
-          />
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <PathPicker
+                path={portraitPath}
+                placeholder={t("framePreset.pickPortrait")}
+                onPick={() => pickPng(setPortraitPath)}
+              />
+            </div>
+            <FramePreview path={portraitPath} className="w-[4.5rem] aspect-[3/4]" />
+          </div>
         </Field>
 
         {/* Ratio */}
@@ -111,13 +122,13 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             <input
               type="number" value={ratioW} min={1} max={100} step={0.1}
               onChange={(e) => setRatioW(Number(e.target.value))}
-              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <span className="text-neutral-500 font-medium">:</span>
             <input
               type="number" value={ratioH} min={1} max={100} step={0.1}
               onChange={(e) => setRatioH(Number(e.target.value))}
-              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <span className="text-xs text-neutral-500">
               = {(ratioW / ratioH).toFixed(2)}
@@ -137,12 +148,28 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
           <button
             onClick={save}
             disabled={saving}
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
+            className="px-4 py-1.5 text-sm bg-accent hover:bg-accent-hover disabled:opacity-40 rounded font-medium"
           >
             {saving ? t("framePreset.saving") : editing ? t("framePreset.saveChanges") : t("framePreset.addFrame")}
           </button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Frame preview on a checkerboard so the transparent border is visible.
+const CHECKER =
+  "repeating-conic-gradient(#3a3a3d 0% 25%, #2a2a2d 0% 50%) 50% / 12px 12px";
+
+function FramePreview({ path, className = "" }: { path: string; className?: string }) {
+  const src = useFrameThumbnail(path || null);
+  return (
+    <div
+      className={`shrink-0 rounded border border-neutral-700 overflow-hidden ${className}`}
+      style={{ background: CHECKER }}
+    >
+      {src && <img src={src} alt="" className="w-full h-full object-contain" draggable={false} />}
+    </div>
   );
 }
