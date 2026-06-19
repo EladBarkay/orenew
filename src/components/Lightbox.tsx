@@ -56,8 +56,14 @@ export default function Lightbox({
   const prefetchIds = [-2, -1, 1, 2]
     .map((d) => photos[currentIndex + d])
     .filter((p): p is Photo => !!p);
-  const stripStart = Math.max(0, currentIndex - 3);
-  const stripPhotos = photos.slice(stripStart, currentIndex + 4);
+  // Fixed centered window: a slot per offset -K..K, keyed by offset so the current
+  // photo always sits in the exact middle slot (empty placeholders fill the ends).
+  // This keeps the strip from drifting/resizing as you navigate near the edges.
+  const STRIP_K = 3;
+  const stripSlots = [];
+  for (let o = -STRIP_K; o <= STRIP_K; o++) {
+    stripSlots.push({ offset: o, photo: photos[currentIndex + o] ?? null });
+  }
   const naturalOrientation = inferOrientation(photo);
   const orientation = photo.orientation_override ?? naturalOrientation;
 
@@ -104,18 +110,17 @@ export default function Lightbox({
         <NavBtn dir="next" onClick={onNext} disabled={!hasNext} />
       </div>
 
-      {/* Filmstrip: neighbors around the current photo, so the user can see what's
-          left/right and jump directly. */}
-      {stripPhotos.length > 1 && (
-        <div className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 overflow-x-auto">
-          {stripPhotos.map((p) => (
-            <FilmstripThumb
-              key={p.id}
-              photo={p}
-              active={p.id === photo.id}
-              onClick={() => onJump(p)}
-            />
-          ))}
+      {/* Filmstrip: current photo pinned to the center slot; neighbors flank it.
+          Logical prev→next order in a flex row, so RTL mirrors it to match the gallery. */}
+      {currentIndex >= 0 && photos.length > 1 && (
+        <div className="shrink-0 flex items-center justify-center gap-1.5 px-4 py-2">
+          {stripSlots.map(({ offset, photo: p }) =>
+            p ? (
+              <FilmstripThumb key={offset} photo={p} active={offset === 0} onClick={() => onJump(p)} />
+            ) : (
+              <div key={offset} className="shrink-0 w-14 h-14 rounded-md" aria-hidden="true" />
+            )
+          )}
         </div>
       )}
 

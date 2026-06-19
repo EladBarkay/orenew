@@ -25,7 +25,7 @@ type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [event, setEvent] = useState<MagnetEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
@@ -415,6 +415,22 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeBatch, visiblePhotos]);
 
+  // Ctrl+Tab / Ctrl+Shift+Tab cycle through batches (wrap around). Selection +
+  // queue persist (combine across batches), same as clicking a tab.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== "Tab") return;
+      if (!event || event.batches.length < 2) return;
+      e.preventDefault();
+      const n = event.batches.length;
+      const idx = event.batches.findIndex((b) => b.id === activeBatch?.id);
+      const nextIdx = e.shiftKey ? (idx - 1 + n) % n : (idx + 1) % n;
+      setActiveBatch(event.batches[nextIdx]);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [event, activeBatch]);
+
   // Derive uniform qty across the targeted photos — 0 if empty or mixed values.
   const targetQtys = targetIds.map((id) => photoQueue[id] ?? 0);
   const allQty = targetQtys.length > 0 && targetQtys.every((q) => q === targetQtys[0])
@@ -431,12 +447,17 @@ export default function App() {
         if (idx < 0) return;
         const cols = colCountRef.current;
         let next = idx;
+        // Under RTL the visual left/right are mirrored, so ArrowRight should move to
+        // the previous photo and ArrowLeft to the next (matching the gallery flow).
+        const rtl = i18n.dir() === "rtl";
+        const fwd = rtl ? -1 : 1; // ArrowRight delta
         // In the lightbox only left/right make sense (the grid rows are hidden, so
         // up/down would jump unpredictably). Over the grid all four navigate.
-        if (e.key === "ArrowRight") next = Math.min(visiblePhotos.length - 1, idx + 1);
-        else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-        else if (e.key === "ArrowDown") next = lightboxOpen ? idx : Math.min(visiblePhotos.length - 1, idx + cols);
-        else if (e.key === "ArrowUp") next = lightboxOpen ? idx : Math.max(0, idx - cols);
+        const clamp = (n: number) => Math.min(visiblePhotos.length - 1, Math.max(0, n));
+        if (e.key === "ArrowRight") next = clamp(idx + fwd);
+        else if (e.key === "ArrowLeft") next = clamp(idx - fwd);
+        else if (e.key === "ArrowDown") next = lightboxOpen ? idx : clamp(idx + cols);
+        else if (e.key === "ArrowUp") next = lightboxOpen ? idx : clamp(idx - cols);
         const nextPhoto = visiblePhotos[next];
         setSelected(nextPhoto);
         if (!lightboxOpen) setSelectedIds(new Set([nextPhoto.id]));
@@ -596,6 +617,7 @@ export default function App() {
               selectedIds={selectedIds}
               onPhotoClick={handlePhotoClick}
               onPhotoDoubleClick={handlePhotoDoubleClick}
+              onBackgroundClick={clearSelection}
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
               cellSize={cellSize}

@@ -24,6 +24,7 @@ function PhotoCard({ photo, selected, active, onClick, onDoubleClick, cellSize, 
 
   return (
     <div
+      data-card
       className={[
         "relative w-full h-full rounded-lg overflow-hidden group",
         "transition-all duration-150",
