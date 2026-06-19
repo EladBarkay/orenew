@@ -14,11 +14,21 @@ type Props = {
 };
 
 const PRESETS = [
-  { label: "1-up  2400×1600", w: 2400, h: 1600, n: 1, cols: 1, rows: 1 },
-  { label: "2-up  2400×1600", w: 2400, h: 1600, n: 2, cols: 2, rows: 1 },
-  { label: "4-up  3600×2400", w: 3600, h: 2400, n: 4, cols: 2, rows: 2 },
-  { label: "Custom", w: 0, h: 0, n: 0, cols: 0, rows: 0 },
+  { label: "1-up  2400×1600", w: 2400, h: 1600, n: 1 },
+  { label: "2-up  2400×1600", w: 2400, h: 1600, n: 2 },
+  { label: "4-up  3600×2400", w: 3600, h: 2400, n: 4 },
+  { label: "Custom", w: 0, h: 0, n: 0 },
 ];
+
+/**
+ * Auto-derive the grid from the photo count + canvas aspect so the user only
+ * picks "photos / canvas". Slots stay close to the canvas shape; `rows` rounds up
+ * so there are always at least `n` slots.
+ */
+function deriveGrid(n: number, w: number, h: number): { cols: number; rows: number } {
+  const cols = Math.min(n, Math.max(1, Math.round(Math.sqrt((n * w) / h))));
+  return { cols, rows: Math.ceil(n / cols) };
+}
 
 export default function CanvasPresetForm({ event, onCreated, onCancel, editing }: Props) {
   const { t } = useTranslation();
@@ -26,21 +36,20 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
   const [w, setW] = useState(editing?.canvas_width_px ?? 2400);
   const [h, setH] = useState(editing?.canvas_height_px ?? 1600);
   const [n, setN] = useState(editing?.photos_per_canvas ?? 2);
-  const [cols, setCols] = useState(editing?.cols ?? 2);
-  const [rows, setRows] = useState(editing?.rows ?? 1);
   const [dpi, setDpi] = useState(editing?.dpi ?? 300);
   const { error, setError, loading: saving, run } = useAsyncForm();
+
+  const { cols, rows } = deriveGrid(n, w, h);
 
   function applyTemplate(idx: number) {
     const t = PRESETS[idx];
     if (t.n === 0) return; // custom — leave fields as-is
-    setW(t.w); setH(t.h); setN(t.n); setCols(t.cols); setRows(t.rows);
+    setW(t.w); setH(t.h); setN(t.n);
     if (!name) setName(t.label.replace(/\s+/g, " ").trim());
   }
 
   async function save() {
     if (!name.trim()) { setError(t("canvasPreset.nameRequired")); return; }
-    if (cols * rows < n) { setError(t("canvasPreset.gridSlotsError", { cols, rows, slots: cols * rows, n })); return; }
     const input = { name: name.trim(), canvas_width_px: w, canvas_height_px: h,
       photos_per_canvas: n, dpi, cols, rows };
     await run(async () => {
@@ -97,10 +106,8 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
           <NumInput value={n} onChange={setN} min={1} max={16} />
         </Field>
         <Field label={t("canvasPreset.gridColsRows")}>
-          <div className="flex items-center gap-1">
-            <NumInput value={cols} onChange={setCols} min={1} max={8} />
-            <span className="text-neutral-500">×</span>
-            <NumInput value={rows} onChange={setRows} min={1} max={8} />
+          <div className="px-2 py-1 text-neutral-300 tabular-nums">
+            {t("canvasPreset.gridAuto", { cols, rows })}
           </div>
         </Field>
         <Field label={t("canvasPreset.dpi")}>
