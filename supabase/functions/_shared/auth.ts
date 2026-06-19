@@ -1,7 +1,7 @@
 // Shared helpers for the entitlement Edge Functions: a service-role Supabase
 // client (bypasses RLS) and resolution of the caller from their access token.
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 export const TOKEN_TTL_SECONDS = 14 * 24 * 60 * 60; // 14-day offline grace ceiling
 
