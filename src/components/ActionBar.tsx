@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { PrintIcon } from "./icons";
 import { QtyButton } from "./ui";
+import { useThumbnail } from "../hooks/useThumbnail";
 
 type Props = {
   queuedTotal: number;
@@ -9,6 +10,10 @@ type Props = {
   allQty: number;
   scanning: boolean;
   scanProgress: { done: number; total: number } | null;
+  /** How many distinct batches contribute to the (effective) queue. */
+  exportBatchCount: number;
+  /** Up to 3 thumbnails of queued photos, shown stacked next to Export. */
+  exportThumbs: { path: string; hash: string }[];
   onSetAllQty: (qty: number) => void;
   onScanFaces: () => void;
   onClearSelection: () => void;
@@ -23,6 +28,7 @@ type Props = {
  */
 export default function ActionBar({
   queuedTotal, visibleCount, selectedCount, allQty, scanning, scanProgress,
+  exportBatchCount, exportThumbs,
   onSetAllQty, onScanFaces, onClearSelection, onExport,
 }: Props) {
   const { t } = useTranslation();
@@ -67,15 +73,40 @@ export default function ActionBar({
         </span>
       )}
 
-      <button
-        onClick={onExport}
-        disabled={queuedTotal === 0}
-        title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}
-        className="ms-auto flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover active:bg-accent-active text-accent-fg disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors"
-      >
-        <PrintIcon />
-        {queuedTotal > 0 ? t("toolbar.exportCount", { count: queuedTotal }) : t("toolbar.export")}
-      </button>
+      <div className="ms-auto flex items-center gap-2">
+        {queuedTotal > 0 && exportThumbs.length > 0 && (
+          <div className="flex items-center">
+            {exportThumbs.map((thumb, i) => (
+              <ExportThumb key={thumb.path} path={thumb.path} hash={thumb.hash} index={i} />
+            ))}
+          </div>
+        )}
+        {exportBatchCount > 1 && (
+          <span className="text-xs text-neutral-400 tabular-nums">{t("actionBar.fromBatches", { n: exportBatchCount })}</span>
+        )}
+        <button
+          onClick={onExport}
+          disabled={queuedTotal === 0}
+          title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}
+          className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover active:bg-accent-active text-accent-fg disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors"
+        >
+          <PrintIcon />
+          {queuedTotal > 0 ? t("toolbar.exportCount", { count: queuedTotal }) : t("toolbar.export")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A small thumbnail in the export indicator's stacked preview. */
+function ExportThumb({ path, hash, index }: { path: string; hash: string; index: number }) {
+  const src = useThumbnail(path, hash);
+  return (
+    <div
+      className="w-7 h-7 rounded-md overflow-hidden ring-2 ring-neutral-900 bg-neutral-800"
+      style={{ marginInlineStart: index === 0 ? 0 : -8, zIndex: 3 - index }}
+    >
+      {src && <img src={src} alt="" className="w-full h-full object-cover" draggable={false} />}
     </div>
   );
 }

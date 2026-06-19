@@ -33,11 +33,16 @@ const he = {
 
   toolbar: {
     openEvent: "פתיחת אירוע",
+    configureEvent: "הגדרת האירוע (מסגרת וקנבס)",
     deleteEvent: "מחיקת האירוע הזה",
     export: "ייצוא",
     exportCount: "ייצוא ({{count}})",
     setQuantitiesFirst: "הגדר כמויות על התמונות בגלריה תחילה",
     settingsLicense: "הגדרות ורישיון",
+  },
+
+  eventConfig: {
+    title: "הגדרות קבועות של האירוע",
   },
 
   galleryToolbar: {
@@ -53,11 +58,19 @@ const he = {
   view: {
     zoomIn: "תמונות ממוזערות גדולות יותר",
     zoomOut: "תמונות ממוזערות קטנות יותר",
+    sortBy: "מיון לפי",
+    sortName: "שם",
+    sortCreated: "תאריך יצירה",
+    sortModified: "תאריך שינוי",
+    sortSize: "גודל קובץ",
+    sortAsc: "סדר עולה",
+    sortDesc: "סדר יורד",
   },
 
   actionBar: {
     clear: "נקה",
     queuedSummary: "{{copies}} עותקים · {{photos}} תמונות",
+    fromBatches: "מ-{{n}} נגלות",
   },
 
   sidebar: {
@@ -174,7 +187,8 @@ const he = {
     width: "רוחב (px)",
     height: "גובה (px)",
     photosPerCanvas: "תמונות / קנבס",
-    gridColsRows: "רשת עמודות × שורות",
+    gridColsRows: "רשת",
+    gridAuto: "{{cols}} × {{rows}} (אוטומטי)",
     dpi: "DPI",
     saving: "שומר…",
     savePreset: "שמירת תבנית",

@@ -13,13 +13,14 @@ type Props = {
   /** Every photo in the multi-selection — all get a ring. */
   selectedIds: Set<string>;
   onPhotoClick: (photo: Photo, e: React.MouseEvent) => void;
+  onPhotoDoubleClick: (photo: Photo) => void;
   photoQueue: Record<string, number>;
   onQtyDelta: (photoId: string, delta: number) => void;
   cellSize?: number;
   onColCountChange?: (n: number) => void;
 };
 
-export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
+export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick, onPhotoDoubleClick, photoQueue, onQtyDelta, cellSize = 168, onColCountChange }: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -63,6 +64,7 @@ export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick,
             selected={selectedIds.has(photo.id)}
             active={photo.id === selectedId}
             onClick={(e) => onPhotoClick(photo, e)}
+            onDoubleClick={() => onPhotoDoubleClick(photo)}
             cellSize={cellSize}
             qty={photoQueue[photo.id] ?? 0}
             onQtyDelta={(delta) => onQtyDelta(photo.id, delta)}
@@ -70,7 +72,7 @@ export default function Gallery({ photos, selectedId, selectedIds, onPhotoClick,
         </div>
       );
     },
-    [photos, selectedId, selectedIds, onPhotoClick, colCount, photoQueue, onQtyDelta, cellSize]
+    [photos, selectedId, selectedIds, onPhotoClick, onPhotoDoubleClick, colCount, photoQueue, onQtyDelta, cellSize]
   );
 
   if (photos.length === 0) {

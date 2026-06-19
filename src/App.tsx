@@ -8,6 +8,7 @@ import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
+import EventConfigDialog from "./components/EventConfigDialog";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
 import BatchTabs from "./components/BatchTabs";
@@ -20,7 +21,8 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "export" | "settings" | null;
+type ModalKind = "export" | "settings" | "eventConfig" | null;
+export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
   const { t } = useTranslation();
@@ -42,6 +44,8 @@ export default function App() {
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
   const [hideEmpty, setHideEmpty] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
   // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
@@ -291,8 +295,18 @@ export default function App() {
 
   const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
   const photos = activeBatch?.photos ?? [];
-  // When "hide empty" is on, drop photos queued for 0 copies from the grid.
-  const visiblePhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  // When "hide empty" is on, drop photos queued for 0 copies from the grid, then
+  // sort by the chosen key/direction (name uses path order, which the backend
+  // already produces, so the default is a no-op).
+  const filteredPhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  const visiblePhotos = [...filteredPhotos].sort((a, b) => {
+    const c =
+      sortKey === "name" ? a.path.localeCompare(b.path) :
+      sortKey === "size" ? a.size_bytes - b.size_bytes :
+      sortKey === "created" ? a.created - b.created :
+      a.modified - b.modified;
+    return c * sortDir;
+  });
 
   // Batch actions act on the selection, or the whole batch when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.id);
@@ -301,6 +315,22 @@ export default function App() {
     ? Object.fromEntries(Object.entries(photoQueue).filter(([id]) => selectedIds.has(id)))
     : photoQueue;
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
+
+  // Export indicator: which batches contribute to the (effective) queue + a few
+  // thumbnails. The queue is global, so a queued photo can live in any batch —
+  // make that scope visible next to the Export button.
+  const queuedIds = Object.keys(effectiveQueue).filter((id) => (effectiveQueue[id] ?? 0) > 0);
+  const idToPhoto = new Map<string, Photo>();
+  const idToBatch = new Map<string, string>();
+  for (const b of event?.batches ?? []) {
+    for (const p of b.photos) { idToPhoto.set(p.id, p); idToBatch.set(p.id, b.name); }
+  }
+  const exportBatchCount = new Set(queuedIds.map((id) => idToBatch.get(id)).filter(Boolean)).size;
+  const exportThumbs = queuedIds
+    .slice(0, 3)
+    .map((id) => idToPhoto.get(id))
+    .filter((p): p is Photo => !!p)
+    .map((p) => ({ path: p.path, hash: p.content_hash }));
 
   // Suggest per-photo export quantities = number of faces detected. Heavy, so
   // it runs on user click (not automatically) with a live progress count. Scans
@@ -357,12 +387,16 @@ export default function App() {
       });
       anchorRef.current = id;
     } else {
-      // Plain click: review this photo full-screen. Leave the multi-selection empty
-      // so the action bar stays in its totals state behind the lightbox.
-      setSelectedIds(new Set());
+      // Plain click selects just this photo. Double-click opens the full-screen
+      // review (see handlePhotoDoubleClick) — single click no longer opens it.
+      setSelectedIds(new Set([id]));
       anchorRef.current = id;
-      setLightboxOpen(true);
     }
+  }
+
+  function handlePhotoDoubleClick(photo: Photo) {
+    setSelected(photo);
+    setLightboxOpen(true);
   }
 
   // Ctrl/Cmd+A selects every photo currently shown in the grid.
@@ -397,24 +431,37 @@ export default function App() {
         if (idx < 0) return;
         const cols = colCountRef.current;
         let next = idx;
+        // In the lightbox only left/right make sense (the grid rows are hidden, so
+        // up/down would jump unpredictably). Over the grid all four navigate.
         if (e.key === "ArrowRight") next = Math.min(visiblePhotos.length - 1, idx + 1);
         else if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-        else if (e.key === "ArrowDown") next = Math.min(visiblePhotos.length - 1, idx + cols);
-        else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
+        else if (e.key === "ArrowDown") next = lightboxOpen ? idx : Math.min(visiblePhotos.length - 1, idx + cols);
+        else if (e.key === "ArrowUp") next = lightboxOpen ? idx : Math.max(0, idx - cols);
         const nextPhoto = visiblePhotos[next];
         setSelected(nextPhoto);
         if (!lightboxOpen) setSelectedIds(new Set([nextPhoto.id]));
         anchorRef.current = nextPhoto.id;
       }
       if (e.key === "Enter") setLightboxOpen(true);
-      if (e.key === "Escape") {
-        if (lightboxOpen) setLightboxOpen(false);
-        else clearSelection();
-      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [selected, visiblePhotos, lightboxOpen]);
+
+  // Escape: close the lightbox, else clear the selection. Kept separate from the
+  // arrow/Enter nav effect above (which is gated on `selected`) so Esc still works
+  // after Ctrl+A — that sets selectedIds without setting `selected`.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (lightboxOpen) setLightboxOpen(false);
+      else clearSelection();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxOpen]);
 
   // Grid cell size, shared by the BatchTabs −/+ buttons and the Ctrl+wheel /
   // Ctrl+± handlers above (same clamp 100–280, step 20).
@@ -516,6 +563,7 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         onOpenEvent={openEvent}
+        onConfigureEvent={() => setModal("eventConfig")}
         onDeleteEvent={deleteEvent}
         onSettings={() => setModal("settings")}
       />
@@ -528,13 +576,17 @@ export default function App() {
             draggedBatchId={draggedBatchId}
             setDraggedBatchId={setDraggedBatchId}
             onAddBatch={addBatch}
-            onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); /* keep photoQueue; effect seeds new photos */ }}
+            onSelectBatch={(b) => { setActiveBatch(b); /* keep selection + photoQueue; counts combine across batches */ }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
             hideEmpty={hideEmpty}
             onToggleHideEmpty={() => setHideEmpty((v) => !v)}
             cellSize={cellSize}
             onZoom={zoomCell}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortKey={setSortKey}
+            onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
           />
 
           <div className="flex flex-1 overflow-hidden">
@@ -543,6 +595,7 @@ export default function App() {
               selectedId={selected?.id ?? null}
               selectedIds={selectedIds}
               onPhotoClick={handlePhotoClick}
+              onPhotoDoubleClick={handlePhotoDoubleClick}
               photoQueue={photoQueue}
               onQtyDelta={adjustQty}
               cellSize={cellSize}
@@ -558,6 +611,8 @@ export default function App() {
               allQty={allQty}
               scanning={scanning}
               scanProgress={scanProgress}
+              exportBatchCount={exportBatchCount}
+              exportThumbs={exportThumbs}
               onSetAllQty={handleSetAllQty}
               onScanFaces={scanFaces}
               onClearSelection={clearSelection}
@@ -579,6 +634,8 @@ export default function App() {
               hasNext={selIdx >= 0 && selIdx < visiblePhotos.length - 1}
               qty={photoQueue[selected.id] ?? 0}
               onQtyDelta={adjustQty}
+              photos={visiblePhotos}
+              onJump={(p) => { setSelected(p); setSelectedIds(new Set([p.id])); anchorRef.current = p.id; }}
             />
           )}
         </>
@@ -611,6 +668,19 @@ export default function App() {
             setAddingFrame(false);
           }}
           onClose={() => setAddingFrame(false)}
+        />
+      )}
+      {modal === "eventConfig" && event && (
+        <EventConfigDialog
+          event={event}
+          onClose={() => setModal(null)}
+          onEventUpdate={updateEvent}
+          onAddFrame={() => setAddingFrame(true)}
+          onEditFrame={setEditingFrame}
+          onDeleteFrame={deleteFramePreset}
+          onAddCanvas={() => setAddingCanvas(true)}
+          onEditCanvas={setEditingCanvas}
+          onDeleteCanvas={deleteCanvasPreset}
         />
       )}
       {modal === "settings" && (

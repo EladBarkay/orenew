@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MagnetEvent, PhotoBatch } from "../types";
+import type { SortKey } from "../App";
 import { PictureIcon, TrashIcon } from "./icons";
 
 type Props = {
@@ -16,6 +17,10 @@ type Props = {
   onToggleHideEmpty: () => void;
   cellSize: number;
   onZoom: (dir: 1 | -1) => void;
+  sortKey: SortKey;
+  sortDir: 1 | -1;
+  onSortKey: (key: SortKey) => void;
+  onToggleSortDir: () => void;
 };
 
 const MIN_CELL = 100;
@@ -31,6 +36,7 @@ export default function BatchTabs({
   event, activeBatch, draggedBatchId, setDraggedBatchId,
   onAddBatch, onSelectBatch, onDeleteBatch, onReorderBatch,
   hideEmpty, onToggleHideEmpty, cellSize, onZoom,
+  sortKey, sortDir, onSortKey, onToggleSortDir,
 }: Props) {
   const { t } = useTranslation();
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -96,6 +102,28 @@ export default function BatchTabs({
 
       {/* View controls, always at the inline-end. */}
       <div className="ms-auto flex items-center gap-3 ps-2 shrink-0">
+        <div className="flex items-center gap-1">
+          <select
+            value={sortKey}
+            onChange={(e) => onSortKey(e.target.value as SortKey)}
+            title={t("view.sortBy")}
+            className="text-xs bg-neutral-800 text-neutral-300 rounded px-1.5 py-1 border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="name">{t("view.sortName")}</option>
+            <option value="created">{t("view.sortCreated")}</option>
+            <option value="modified">{t("view.sortModified")}</option>
+            <option value="size">{t("view.sortSize")}</option>
+          </select>
+          <button
+            type="button"
+            onClick={onToggleSortDir}
+            title={sortDir === 1 ? t("view.sortAsc") : t("view.sortDesc")}
+            className="flex items-center justify-center w-6 h-6 rounded text-neutral-300 hover:bg-neutral-800 text-sm leading-none"
+          >
+            {sortDir === 1 ? "↑" : "↓"}
+          </button>
+        </div>
+
         <div className="flex items-center gap-0.5 rounded-full bg-neutral-800 p-0.5">
           <ZoomButton label="−" onClick={() => onZoom(-1)} disabled={cellSize <= MIN_CELL} title={t("view.zoomOut")} />
           <PictureIcon className="w-3.5 h-3.5 text-neutral-500 mx-0.5" />

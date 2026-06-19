@@ -117,6 +117,14 @@ pub struct Photo {
     #[serde(default)]
     pub save_count: u32,
     pub content_hash: String,
+    // File metadata for gallery sorting. Epoch seconds; 0 when unknown (e.g. old
+    // events or platforms without created-time). Derived from the file, not user data.
+    #[serde(default)]
+    pub size_bytes: u64,
+    #[serde(default)]
+    pub created: u64,
+    #[serde(default)]
+    pub modified: u64,
 }
 
 impl Photo {
@@ -209,6 +217,9 @@ mod tests {
             print_count: 0,
             save_count: 0,
             content_hash: String::new(),
+            size_bytes: 0,
+            created: 0,
+            modified: 0,
         }
     }
 
