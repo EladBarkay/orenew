@@ -183,7 +183,7 @@ If the subscription is at its device-seat limit, `issue-entitlement` returns
 with `kind: "device_limit"`, the UI opens `DeviceManagerDialog`, the user
 disconnects a device (`disconnect-device`), and provisioning retries.
 
-OAuth uses PKCE and returns via the custom deep link `magnet://auth-callback`
+OAuth uses PKCE and returns via the custom deep link `magnetapp://auth-callback`
 (`tauri-plugin-deep-link`, handled by `useAuthDeepLink`); Google/Meta only ever
 see Supabase's HTTPS callback, never the custom scheme.
 

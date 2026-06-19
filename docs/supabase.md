@@ -3,7 +3,10 @@
 MagNet uses Supabase for identity (sign-in) and authorization (tier). The app
 treats **Rust as the source of truth**: the frontend only drives interactive
 sign-in, then hands the session to Rust, which verifies the JWT against Supabase's
-public JWKS and reads the `entitlements` table itself.
+public JWKS and then mints a device-bound, **signed entitlement token** via the
+`issue-entitlement` Edge Function (which reads the `entitlements` table
+server-side). The token is verified offline on the client before its tier is
+trusted.
 
 This is a one-time, out-of-repo project configuration. Do it once per Supabase
 project (e.g. a `staging` and a `prod` project).
@@ -19,7 +22,7 @@ In **Authentication → Providers**, enable:
 
 > **Authorized redirect URI for Google/Meta is Supabase's own callback:**
 > `https://<project-ref>.supabase.co/auth/v1/callback`.
-> Google/Meta never see the `magnet://` custom scheme — that is only the final
+> Google/Meta never see the `magnetapp://` custom scheme — that is only the final
 > Supabase→app hop (configured in step 2). Paste each provider's client id +
 > secret into Supabase.
 
@@ -28,7 +31,7 @@ In **Authentication → Providers**, enable:
 In **Authentication → URL Configuration → Redirect URLs**, add:
 
 ```
-magnet://auth-callback
+magnetapp://auth-callback
 ```
 
 Supabase permits non-HTTP schemes here for native/desktop apps. This is where the
@@ -65,19 +68,22 @@ update public.entitlements
 ## 5. Config values
 
 The anon key is public and safe to ship. Both the Rust binary and the frontend
-read the same two vars from a single repo-root `.env` (see `.env.example`):
+read these Supabase vars from a single repo-root `.env` (see `.env.example`):
 
 ```
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=<anon-key>
 ```
 
+(The `.env` also holds `ENTITLEMENT_PUBLIC_KEY` — the entitlement-token verifier
+key — set up in §6.)
+
 `src-tauri/build.rs` loads this `.env` via `dotenvy` and bakes the values in at
 `cargo build`; Vite exposes them to the frontend via
 `envPrefix: ["VITE_", "SUPABASE_"]`. A real exported shell env var overrides the
 `.env` on either side.
 
-## 7. Entitlement token signing key + Edge Functions
+## 6. Entitlement token signing key + Edge Functions
 
 Tier is delivered to the client as a **server-signed, device-bound entitlement
 token** (EdDSA JWS), verified offline against a baked-in public key. This is what
@@ -117,7 +123,7 @@ makes the offline cache tamper-resistant and binds a seat to a machine.
    Both use the platform-provided `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` and
    authenticate the caller's access token.
 
-## 6. Google / OAuth sign-in
+## 7. Google / OAuth sign-in
 
 The desktop OAuth flow opens the system browser at the Supabase authorize URL,
 which redirects to Google and back to the app via the custom deep link
