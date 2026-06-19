@@ -49,6 +49,11 @@ can read only their own row, and adds a trigger that auto-creates a `free` row o
 signup. Only the **service role** (your Stripe webhook / admin tooling) can write
 a paid tier — there is no client-writable policy.
 
+The same file also creates `public.entitlement_devices`, the per-user device
+registry used for seat enforcement. Users can **read** their own devices (for the
+in-app "manage devices" list); only the service role (the Edge Functions below)
+may insert/update/delete rows.
+
 To grant someone Pro/Studio manually (e.g. for testing), run as service role:
 
 ```sql
@@ -72,6 +77,46 @@ SUPABASE_ANON_KEY=<anon-key>
 `envPrefix: ["VITE_", "SUPABASE_"]`. A real exported shell env var overrides the
 `.env` on either side.
 
+## 7. Entitlement token signing key + Edge Functions
+
+Tier is delivered to the client as a **server-signed, device-bound entitlement
+token** (EdDSA JWS), verified offline against a baked-in public key. This is what
+makes the offline cache tamper-resistant and binds a seat to a machine.
+
+1. **Generate an Ed25519 keypair** (one per project):
+
+   ```bash
+   openssl genpkey -algorithm ed25519 -out ent_priv.pem
+   openssl pkey -in ent_priv.pem -pubout -out ent_pub.pem
+   ```
+
+2. **Public key → client.** Put the contents of `ent_pub.pem` into the repo-root
+   `.env` as `ENTITLEMENT_PUBLIC_KEY` (one line, `\n` between PEM lines — see
+   `.env.example`). It is baked into the binary by `build.rs`. Public — safe to ship.
+
+3. **Private key → server secret.** Never commit it. Set it as the Edge Function
+   secret:
+
+   ```bash
+   supabase secrets set ENTITLEMENT_SIGNING_KEY="$(cat ent_priv.pem)"
+   ```
+
+4. **Deploy the functions** (`supabase/functions/`):
+
+   ```bash
+   supabase functions deploy issue-entitlement
+   supabase functions deploy disconnect-device
+   ```
+
+   - `issue-entitlement` — registers the caller's device (subject to the per-tier
+     seat limit in `_shared/auth.ts`: Free uncapped, Pro 2, Studio 5) and returns a
+     signed token. At the limit it returns `409 { error: "device_limit_reached",
+     devices }` and the app shows the device picker.
+   - `disconnect-device` — deletes a device row, freeing a seat.
+
+   Both use the platform-provided `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` and
+   authenticate the caller's access token.
+
 ## 6. Google / OAuth sign-in
 
 The desktop OAuth flow opens the system browser at the Supabase authorize URL,
@@ -90,13 +135,8 @@ For sign-in to actually complete, configure the Supabase project:
    If this is missing, the authorize page stalls instead of redirecting to
    Google (the `redirect_to` is rejected).
 
-## Dev bypass
+## Dev / QA at a paid tier
 
-To run at a paid tier without any sign-in, build with:
-
-```bash
-MAGNET_DEV_TIER=pro npm run tauri dev      # or studio
-```
-
-Rust seeds a synthetic Pro/Studio entitlement (sentinel session) and the
-background refresh loop skips it — no network, no Supabase project needed.
+There is no compile-time tier bypass. To test paid behavior, sign in with a real
+account and grant it a tier as the service role (see the `update` snippet in §4);
+every build — dev and release — goes through real sign-in and server validation.
