@@ -84,7 +84,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
         <div className="col-span-2">
           <Field label={t("canvasPreset.name")}>
             <input value={name} onChange={e => setName(e.target.value)}
-              className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent" />
           </Field>
         </div>
         <Field label={t("canvasPreset.width")}>
@@ -116,7 +116,7 @@ export default function CanvasPresetForm({ event, onCreated, onCancel, editing }
           {t("common.cancel")}
         </button>
         <button onClick={save} disabled={saving}
-          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded font-medium">
+          className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover disabled:opacity-50 rounded font-medium">
           {saving ? t("canvasPreset.saving") : editing ? t("canvasPreset.saveChanges") : t("canvasPreset.savePreset")}
         </button>
       </div>

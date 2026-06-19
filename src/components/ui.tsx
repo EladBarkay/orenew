@@ -16,7 +16,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
-        className={`relative z-10 w-full ${maxW} mx-4 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-5`}
+        className={`relative z-10 w-full ${maxW} mx-4 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl p-5`}
       >
         {children}
       </div>
@@ -55,7 +55,7 @@ export function Chip({
       onClick={onClick}
       className={[
         "px-2.5 py-1 text-xs rounded transition-colors",
-        active ? "bg-blue-600 text-white" : "bg-neutral-700 hover:bg-neutral-600 text-neutral-300",
+        active ? "bg-accent text-accent-fg" : "bg-neutral-700 hover:bg-neutral-600 text-neutral-300",
       ].join(" ")}
     >
       {label}
@@ -82,7 +82,7 @@ export function NumInput({
       min={min}
       max={max}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="w-full bg-neutral-700 rounded px-2 py-1 text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
     />
   );
 }
@@ -158,7 +158,7 @@ export function PresetOption({
       className={[
         "w-full text-start px-3 py-2 rounded text-sm transition-colors",
         selected
-          ? "bg-blue-600/20 ring-1 ring-blue-500 text-neutral-100"
+          ? "bg-accent/15 ring-1 ring-accent text-neutral-100"
           : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300",
       ].join(" ")}
     >

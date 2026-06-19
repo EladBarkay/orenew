@@ -4,7 +4,7 @@ import { FixedSizeGrid, GridChildComponentProps } from "react-window";
 import PhotoCard from "./PhotoCard";
 import { Photo } from "../types";
 
-const GAP = 6;
+const GAP = 10;
 
 type Props = {
   photos: Photo[];

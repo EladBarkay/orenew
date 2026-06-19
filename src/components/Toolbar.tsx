@@ -21,12 +21,12 @@ export default function Toolbar({
   const tier = entitlement?.tier ?? "free";
 
   return (
-    <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-800 border-b border-neutral-700 shrink-0">
-      <MagnetLogo className="w-6 h-6 text-[#5B5BD6]" />
+    <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-900 border-b border-neutral-800 shrink-0">
+      <MagnetLogo className="w-6 h-6 text-accent" />
       <span className="font-bold text-base tracking-tight text-white">MagNet</span>
       <div className="w-px h-4 bg-neutral-600" />
       <button onClick={onOpenEvent}
-        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded text-sm font-medium transition-colors">
+        className="px-3 py-1.5 bg-accent hover:bg-accent-hover active:bg-accent-active rounded text-sm font-medium transition-colors">
         {t("toolbar.openEvent")}
       </button>
 

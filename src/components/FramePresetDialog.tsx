@@ -83,7 +83,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t("framePreset.namePlaceholder")}
-            className="w-full bg-neutral-800 rounded px-3 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-neutral-600"
+            className="w-full bg-neutral-800 rounded px-3 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-neutral-600"
           />
         </Field>
 
@@ -111,13 +111,13 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
             <input
               type="number" value={ratioW} min={1} max={100} step={0.1}
               onChange={(e) => setRatioW(Number(e.target.value))}
-              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <span className="text-neutral-500 font-medium">:</span>
             <input
               type="number" value={ratioH} min={1} max={100} step={0.1}
               onChange={(e) => setRatioH(Number(e.target.value))}
-              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-20 bg-neutral-800 rounded px-2 py-1.5 text-sm text-center text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <span className="text-xs text-neutral-500">
               = {(ratioW / ratioH).toFixed(2)}
@@ -137,7 +137,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
           <button
             onClick={save}
             disabled={saving}
-            className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
+            className="px-4 py-1.5 text-sm bg-accent hover:bg-accent-hover disabled:opacity-40 rounded font-medium"
           >
             {saving ? t("framePreset.saving") : editing ? t("framePreset.saveChanges") : t("framePreset.addFrame")}
           </button>

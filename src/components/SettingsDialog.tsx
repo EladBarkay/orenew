@@ -93,7 +93,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
           <select
             value={i18n.language}
             onChange={(e) => setLanguage(e.target.value as LangCode)}
-            className="text-sm bg-neutral-700 text-neutral-100 rounded px-2 py-1 border border-neutral-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="text-sm bg-neutral-700 text-neutral-100 rounded px-2 py-1 border border-neutral-600 focus:outline-none focus:ring-1 focus:ring-accent"
           >
             {LANGS.map((l) => (
               <option key={l.code} value={l.code}>{l.label}</option>
@@ -145,7 +145,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
             {tier === "free" && (
               <button
                 onClick={openBuyPage}
-                className="text-xs text-blue-400 hover:text-blue-300 text-start"
+                className="text-xs text-accent hover:text-accent-hover text-start"
               >
                 {t("settings.buyLicense")}
               </button>
@@ -171,7 +171,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
                   onKeyDown={(e) => e.key === "Enter" && signInPassword()}
                   placeholder={t("settings.emailPlaceholder")}
                   autoFocus
-                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </label>
               <label className="block text-xs font-medium text-neutral-400">
@@ -182,7 +182,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && signInPassword()}
                   placeholder={t("settings.passwordPlaceholder")}
-                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 w-full bg-neutral-700 rounded px-2 py-1.5 text-sm text-neutral-100 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </label>
             </div>
@@ -212,7 +212,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
 
             <p className="text-xs text-neutral-500">
               {t("settings.noAccount")}{" "}
-              <button onClick={openBuyPage} className="text-blue-400 hover:text-blue-300">
+              <button onClick={openBuyPage} className="text-accent hover:text-accent-hover">
                 {t("settings.createAccount")}
               </button>
             </p>
@@ -232,7 +232,7 @@ export default function SettingsDialog({ entitlement, onClose, onEntitlementChan
             <button
               onClick={signInPassword}
               disabled={busy}
-              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded font-medium"
+              className="px-4 py-1.5 text-sm bg-accent hover:bg-accent-hover disabled:opacity-40 rounded font-medium"
             >
               {busy ? t("settings.signingIn") : t("settings.signIn")}
             </button>

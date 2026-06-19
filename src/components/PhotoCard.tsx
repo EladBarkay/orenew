@@ -24,15 +24,15 @@ function PhotoCard({ photo, selected, active, onClick, cellSize, qty, onQtyDelta
   return (
     <div
       className={[
-        "relative w-full h-full rounded overflow-hidden group",
-        "transition-all duration-100",
+        "relative w-full h-full rounded-lg overflow-hidden group",
+        "transition-all duration-150",
         // Dim photos queued for 0 copies and not selected — won't be printed/exported.
         qty === 0 && !selected ? "opacity-40 hover:opacity-100" : "",
         active
-          ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-neutral-900"
+          ? "ring-2 ring-accent ring-offset-1 ring-offset-neutral-950"
           : selected
-          ? "ring-2 ring-blue-500/70"
-          : "hover:ring-1 hover:ring-neutral-500 hover:ring-offset-1 hover:ring-offset-neutral-900",
+          ? "ring-2 ring-accent/70"
+          : "hover:ring-1 hover:ring-neutral-600 hover:ring-offset-1 hover:ring-offset-neutral-950",
       ].join(" ")}
       title={filename}
     >
