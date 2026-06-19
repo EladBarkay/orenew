@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Gallery from "./components/Gallery";
-import PreviewPanel from "./components/PreviewPanel";
+import Lightbox from "./components/Lightbox";
 import ExportDialog from "./components/ExportDialog";
 import FramePresetDialog from "./components/FramePresetDialog";
 import SettingsDialog from "./components/SettingsDialog";
@@ -47,6 +47,9 @@ export default function App() {
   // Multi-selection in the grid; `selected` (above) is the last-clicked photo and
   // drives the preview + shift-range anchor.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Full-screen review is a distinct mode from selection: a plain click opens it,
+  // while Ctrl/Shift clicks only multi-select (for bulk copies) without opening it.
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const anchorRef = useRef<string | null>(null);
   // Photo ids the queue has already seeded. New photos that appear later (file
   // watcher) get a default qty of 1; photos the user zeroed stay "seen" so they
@@ -58,8 +61,6 @@ export default function App() {
     setSelectedIds(new Set());
     anchorRef.current = null;
   }
-  const [previewWidth, setPreviewWidth] = useState(288);
-  const previewDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const colCountRef = useRef(1);
 
   // Block the webview reload shortcuts — a reload wipes the in-memory event and
@@ -356,8 +357,11 @@ export default function App() {
       });
       anchorRef.current = id;
     } else {
-      setSelectedIds(new Set([id]));
+      // Plain click: review this photo full-screen. Leave the multi-selection empty
+      // so the action bar stays in its totals state behind the lightbox.
+      setSelectedIds(new Set());
       anchorRef.current = id;
+      setLightboxOpen(true);
     }
   }
 
@@ -399,14 +403,18 @@ export default function App() {
         else if (e.key === "ArrowUp") next = Math.max(0, idx - cols);
         const nextPhoto = visiblePhotos[next];
         setSelected(nextPhoto);
-        setSelectedIds(new Set([nextPhoto.id]));
+        if (!lightboxOpen) setSelectedIds(new Set([nextPhoto.id]));
         anchorRef.current = nextPhoto.id;
       }
-      if (e.key === "Escape") setSelected(null);
+      if (e.key === "Enter") setLightboxOpen(true);
+      if (e.key === "Escape") {
+        if (lightboxOpen) setLightboxOpen(false);
+        else clearSelection();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected, visiblePhotos]);
+  }, [selected, visiblePhotos, lightboxOpen]);
 
   // Grid cell size, shared by the BatchTabs −/+ buttons and the Ctrl+wheel /
   // Ctrl+± handlers above (same clamp 100–280, step 20).
@@ -489,25 +497,15 @@ export default function App() {
     });
   }
 
-  function onDividerMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    previewDragRef.current = { startX: e.clientX, startWidth: previewWidth };
-    // The preview sits at the inline-end edge: in LTR that's the right (dragging
-    // left grows it), in RTL it's the left (dragging right grows it).
-    const rtl = document.documentElement.dir === "rtl";
-    const onMove = (ev: MouseEvent) => {
-      if (!previewDragRef.current) return;
-      const moved = previewDragRef.current.startX - ev.clientX;
-      const delta = rtl ? -moved : moved;
-      setPreviewWidth(Math.max(240, Math.min(640, previewDragRef.current.startWidth + delta)));
-    };
-    const onUp = () => {
-      previewDragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+  // Lightbox prev/next over the currently visible photos.
+  const selIdx = selected ? visiblePhotos.findIndex((p) => p.id === selected.id) : -1;
+  function goAdjacent(dir: -1 | 1) {
+    if (selIdx < 0) return;
+    const next = visiblePhotos[selIdx + dir];
+    if (!next) return;
+    setSelected(next);
+    setSelectedIds(new Set([next.id]));
+    anchorRef.current = next.id;
   }
 
   return (
@@ -550,23 +548,6 @@ export default function App() {
               cellSize={cellSize}
               onColCountChange={(n) => { colCountRef.current = n; }}
             />
-            {selected && (
-              <>
-                <div
-                  onMouseDown={onDividerMouseDown}
-                  className="w-1 cursor-col-resize bg-neutral-800 hover:bg-accent transition-colors shrink-0"
-                />
-                <PreviewPanel
-                  event={event}
-                  photo={selected}
-                  onClose={() => setSelected(null)}
-                  frameNonce={frameNonce}
-                  onOrientationOverride={(id, o) => setOrientation(id, o)}
-                  onClearOrientationOverride={(id) => setOrientation(id, null)}
-                  width={previewWidth}
-                />
-              </>
-            )}
           </div>
 
           {activeBatch && activeBatch.photos.length > 0 && (
@@ -581,6 +562,23 @@ export default function App() {
               onScanFaces={scanFaces}
               onClearSelection={clearSelection}
               onExport={() => setModal("export")}
+            />
+          )}
+
+          {lightboxOpen && selected && (
+            <Lightbox
+              event={event}
+              photo={selected}
+              onClose={() => setLightboxOpen(false)}
+              frameNonce={frameNonce}
+              onOrientationOverride={(id, o) => setOrientation(id, o)}
+              onClearOrientationOverride={(id) => setOrientation(id, null)}
+              onPrev={() => goAdjacent(-1)}
+              onNext={() => goAdjacent(1)}
+              hasPrev={selIdx > 0}
+              hasNext={selIdx >= 0 && selIdx < visiblePhotos.length - 1}
+              qty={photoQueue[selected.id] ?? 0}
+              onQtyDelta={adjustQty}
             />
           )}
         </>
