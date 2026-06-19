@@ -10,8 +10,8 @@ import SettingsDialog from "./components/SettingsDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
 import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
-import GalleryToolbar from "./components/GalleryToolbar";
-import Sidebar from "./components/Sidebar";
+import BatchTabs from "./components/BatchTabs";
+import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
 import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
@@ -20,7 +20,7 @@ import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
 import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement } from "./types";
 
-type ModalKind = "export" | "addFrame" | "addCanvas" | "settings" | null;
+type ModalKind = "export" | "settings" | null;
 
 export default function App() {
   const { t } = useTranslation();
@@ -30,12 +30,14 @@ export default function App() {
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
-  const [draggedFrameId, setDraggedFrameId] = useState<string | null>(null);
-  const [draggedCanvasId, setDraggedCanvasId] = useState<string | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [frameNonce, setFrameNonce] = useState(0);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
+  // Add-preset modals stack over the Export dialog (which manages presets), so they
+  // get their own state instead of sharing the single `modal` slot.
+  const [addingFrame, setAddingFrame] = useState(false);
+  const [addingCanvas, setAddingCanvas] = useState(false);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
@@ -209,24 +211,6 @@ export default function App() {
     const batches = reorderById(event.batches, draggedBatchId, targetId);
     if (!batches) return;
     const updated = { ...event, batches };
-    setEvent(updated);
-    invoke("save_event", { event: updated }).catch(() => {});
-  }
-
-  function reorderFramePreset(targetId: string) {
-    if (!event) return;
-    const frame_presets = reorderById(event.frame_presets, draggedFrameId, targetId);
-    if (!frame_presets) return;
-    const updated = { ...event, frame_presets };
-    setEvent(updated);
-    invoke("save_event", { event: updated }).catch(() => {});
-  }
-
-  function reorderCanvasPreset(targetId: string) {
-    if (!event) return;
-    const canvas_presets = reorderById(event.canvas_presets, draggedCanvasId, targetId);
-    if (!canvas_presets) return;
-    const updated = { ...event, canvas_presets };
     setEvent(updated);
     invoke("save_event", { event: updated }).catch(() => {});
   }
@@ -424,6 +408,11 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [selected, visiblePhotos]);
 
+  // Grid cell size, shared by the BatchTabs −/+ buttons and the Ctrl+wheel /
+  // Ctrl+± handlers above (same clamp 100–280, step 20).
+  const zoomCell = (dir: 1 | -1) =>
+    setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
+
   function adjustQty(photoId: string, delta: number) {
     setPhotoQueue((prev) => {
       const next = Math.max(0, (prev[photoId] ?? 0) + delta);
@@ -522,22 +511,20 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-900 text-neutral-100 select-none">
+    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 select-none">
       <Toolbar
         event={event}
         entitlement={entitlement}
         status={status}
         totalPhotos={totalPhotos}
-        queuedTotal={queuedTotal}
         onOpenEvent={openEvent}
         onDeleteEvent={deleteEvent}
-        onExport={() => setModal("export")}
         onSettings={() => setModal("settings")}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        {event ? (
-          <Sidebar
+      {event ? (
+        <>
+          <BatchTabs
             event={event}
             activeBatch={activeBatch}
             draggedBatchId={draggedBatchId}
@@ -546,75 +533,60 @@ export default function App() {
             onSelectBatch={(b) => { setActiveBatch(b); clearSelection(); /* keep photoQueue; effect seeds new photos */ }}
             onDeleteBatch={deleteBatch}
             onReorderBatch={reorderBatch}
-            draggedFrameId={draggedFrameId}
-            setDraggedFrameId={setDraggedFrameId}
-            onReorderFrame={reorderFramePreset}
-            onAddFrame={() => setModal("addFrame")}
-            onEditFrame={setEditingFrame}
-            onDeleteFrame={deleteFramePreset}
-            draggedCanvasId={draggedCanvasId}
-            setDraggedCanvasId={setDraggedCanvasId}
-            onReorderCanvas={reorderCanvasPreset}
-            onAddCanvas={() => setModal("addCanvas")}
-            onEditCanvas={setEditingCanvas}
-            onDeleteCanvas={deleteCanvasPreset}
+            hideEmpty={hideEmpty}
+            onToggleHideEmpty={() => setHideEmpty((v) => !v)}
+            cellSize={cellSize}
+            onZoom={zoomCell}
           />
-        ) : (
-          <aside className="w-52 shrink-0 flex flex-col bg-neutral-850 border-e border-neutral-700">
-            <div className="flex-1 flex items-center justify-center text-neutral-600 text-xs p-4 text-center">
-              {t("app.openToBegin")}
-            </div>
-          </aside>
-        )}
 
-        {event ? (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            {activeBatch && activeBatch.photos.length > 0 && (
-              <GalleryToolbar
-                selectedCount={selectedIds.size}
-                allQty={allQty}
-                hideEmpty={hideEmpty}
-                scanning={scanning}
-                scanProgress={scanProgress}
-                onSetAllQty={handleSetAllQty}
-                onScanFaces={scanFaces}
-                onToggleHideEmpty={() => setHideEmpty((v) => !v)}
-              />
+          <div className="flex flex-1 overflow-hidden">
+            <Gallery
+              photos={visiblePhotos}
+              selectedId={selected?.id ?? null}
+              selectedIds={selectedIds}
+              onPhotoClick={handlePhotoClick}
+              photoQueue={photoQueue}
+              onQtyDelta={adjustQty}
+              cellSize={cellSize}
+              onColCountChange={(n) => { colCountRef.current = n; }}
+            />
+            {selected && (
+              <>
+                <div
+                  onMouseDown={onDividerMouseDown}
+                  className="w-1 cursor-col-resize bg-neutral-800 hover:bg-accent transition-colors shrink-0"
+                />
+                <PreviewPanel
+                  event={event}
+                  photo={selected}
+                  onClose={() => setSelected(null)}
+                  frameNonce={frameNonce}
+                  onOrientationOverride={(id, o) => setOrientation(id, o)}
+                  onClearOrientationOverride={(id) => setOrientation(id, null)}
+                  width={previewWidth}
+                />
+              </>
             )}
-            <div className="flex flex-1 overflow-hidden">
-              <Gallery
-                photos={visiblePhotos}
-                selectedId={selected?.id ?? null}
-                selectedIds={selectedIds}
-                onPhotoClick={handlePhotoClick}
-                photoQueue={photoQueue}
-                onQtyDelta={adjustQty}
-                cellSize={cellSize}
-                onColCountChange={(n) => { colCountRef.current = n; }}
-              />
-              {selected && (
-                <>
-                  <div
-                    onMouseDown={onDividerMouseDown}
-                    className="w-1 cursor-col-resize bg-neutral-700 hover:bg-blue-500 transition-colors shrink-0"
-                  />
-                  <PreviewPanel
-                    event={event}
-                    photo={selected}
-                    onClose={() => setSelected(null)}
-                    frameNonce={frameNonce}
-                    onOrientationOverride={(id, o) => setOrientation(id, o)}
-                    onClearOrientationOverride={(id) => setOrientation(id, null)}
-                    width={previewWidth}
-                  />
-                </>
-              )}
-            </div>
           </div>
-        ) : (
-          <EmptyState onOpen={openEvent} />
-        )}
-      </div>
+
+          {activeBatch && activeBatch.photos.length > 0 && (
+            <ActionBar
+              queuedTotal={queuedTotal}
+              visibleCount={visiblePhotos.length}
+              selectedCount={selectedIds.size}
+              allQty={allQty}
+              scanning={scanning}
+              scanProgress={scanProgress}
+              onSetAllQty={handleSetAllQty}
+              onScanFaces={scanFaces}
+              onClearSelection={clearSelection}
+              onExport={() => setModal("export")}
+            />
+          )}
+        </>
+      ) : (
+        <EmptyState onOpen={openEvent} />
+      )}
 
       {/* Modals */}
       {modal === "export" && event && (
@@ -624,17 +596,23 @@ export default function App() {
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onExported={handleExported}
+          onAddFrame={() => setAddingFrame(true)}
+          onEditFrame={setEditingFrame}
+          onDeleteFrame={deleteFramePreset}
+          onAddCanvas={() => setAddingCanvas(true)}
+          onEditCanvas={setEditingCanvas}
+          onDeleteCanvas={deleteCanvasPreset}
         />
       )}
-      {modal === "addFrame" && event && (
+      {addingFrame && event && (
         <FramePresetDialog
           event={event}
           onCreated={(updatedEvent) => {
             updateEvent(updatedEvent);
             invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
-            setModal(null);
+            setAddingFrame(false);
           }}
-          onClose={() => setModal(null)}
+          onClose={() => setAddingFrame(false)}
         />
       )}
       {modal === "settings" && (
@@ -644,12 +622,12 @@ export default function App() {
           onEntitlementChange={setEntitlement}
         />
       )}
-      {modal === "addCanvas" && event && (
-        <Modal onClose={() => setModal(null)}>
+      {addingCanvas && event && (
+        <Modal onClose={() => setAddingCanvas(false)}>
           <CanvasPresetForm
             event={event}
-            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setModal(null); }}
-            onCancel={() => setModal(null)}
+            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setAddingCanvas(false); }}
+            onCancel={() => setAddingCanvas(false)}
           />
         </Modal>
       )}

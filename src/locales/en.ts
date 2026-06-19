@@ -49,6 +49,16 @@ const en = {
     hideEmpty: "Hide cards with no copies",
   },
 
+  view: {
+    zoomIn: "Larger thumbnails",
+    zoomOut: "Smaller thumbnails",
+  },
+
+  actionBar: {
+    clear: "Clear",
+    queuedSummary: "{{copies}} copies · {{photos}} photos",
+  },
+
   sidebar: {
     batches: "Batches",
     add: "+ Add",

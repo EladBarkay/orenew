@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Entitlement, MagnetEvent } from "../types";
-import { MagnetLogo, PrintIcon, SettingsIcon, TrashIcon } from "./icons";
+import { MagnetLogo, SettingsIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
 
 type Props = {
@@ -8,16 +8,14 @@ type Props = {
   entitlement: Entitlement | null;
   status: string;
   totalPhotos: number;
-  queuedTotal: number;
   onOpenEvent: () => void;
   onDeleteEvent: () => void;
-  onExport: () => void;
   onSettings: () => void;
 };
 
 export default function Toolbar({
-  event, entitlement, status, totalPhotos, queuedTotal,
-  onOpenEvent, onDeleteEvent, onExport, onSettings,
+  event, entitlement, status, totalPhotos,
+  onOpenEvent, onDeleteEvent, onSettings,
 }: Props) {
   const { t } = useTranslation();
   const tier = entitlement?.tier ?? "free";
@@ -44,25 +42,14 @@ export default function Toolbar({
           >
             <TrashIcon />
           </button>
-
-          <div className="ms-auto flex items-center gap-3">
-            <button
-              onClick={onExport}
-              disabled={queuedTotal === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors"
-              title={queuedTotal === 0 ? t("toolbar.setQuantitiesFirst") : ""}
-            >
-              <PrintIcon />
-              {queuedTotal > 0 ? t("toolbar.exportCount", { count: queuedTotal }) : t("toolbar.export")}
-            </button>
-          </div>
         </>
       )}
 
+      {/* Spacer pushes the trailing status + settings group to the inline-end. */}
+      <div className="ms-auto" />
+
       {status && (
-        <span className={["text-xs", event ? "" : "ms-auto", "text-neutral-400"].join(" ")}>
-          {status}
-        </span>
+        <span className="text-xs text-neutral-400">{status}</span>
       )}
 
       <button
@@ -70,7 +57,6 @@ export default function Toolbar({
         title={t("toolbar.settingsLicense")}
         className={[
           "flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors",
-          event ? "" : "ms-auto",
           "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700",
         ].join(" ")}
       >

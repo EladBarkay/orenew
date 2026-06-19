@@ -50,6 +50,16 @@ const he = {
     hideEmpty: "הסתר כרטיסים ללא עותקים",
   },
 
+  view: {
+    zoomIn: "תמונות ממוזערות גדולות יותר",
+    zoomOut: "תמונות ממוזערות קטנות יותר",
+  },
+
+  actionBar: {
+    clear: "נקה",
+    queuedSummary: "{{copies}} עותקים · {{photos}} תמונות",
+  },
+
   sidebar: {
     batches: "נגלות",
     add: "+ הוספה",
