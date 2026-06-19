@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="#5B5BD6" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="56 50 400 400" fill="#5B5BD6" aria-hidden="true">
   <!-- MagNet brand mark — "Magnetic Iris" (D1, depth variant). Faceted aperture
        blades (stepped fill-opacity) + open-base rim. Transparent background;
-       indigo (#5B5BD6) fill. Source of truth for the raster logo + app icons. -->
+       indigo (#5B5BD6) fill. Source of truth for the raster logo + app icons.
+       Tight square viewBox (56 50 400 400): mark fills edge-to-edge, centered. -->
   <path fill-opacity="0.5" d="M189 139.95 A134 134 0 0 1 323 139.95 L281.98 241 L256 226 Z" />
   <path fill-opacity="0.6" d="M323 139.95 A134 134 0 0 1 390 256 L281.98 271 L281.98 241 Z" />
   <path fill-opacity="0.7" d="M390 256 A134 134 0 0 1 323 372.05 L256 286 L281.98 271 Z" />
