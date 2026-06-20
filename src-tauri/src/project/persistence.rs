@@ -25,7 +25,7 @@ impl EventStore {
     }
 
     fn event_path(&self, id: Uuid) -> PathBuf {
-        self.base_dir.join(id.to_string()).join("magnet.json")
+        self.base_dir.join(id.to_string()).join("orenew.json")
     }
 
     pub fn load(&self, id: Uuid) -> Result<Event> {
@@ -48,7 +48,7 @@ impl EventStore {
         let mut events = Vec::new();
         for entry in std::fs::read_dir(&self.base_dir)? {
             let entry = entry?;
-            let json_path = entry.path().join("magnet.json");
+            let json_path = entry.path().join("orenew.json");
             if json_path.exists() {
                 match load_json::<Event>(&json_path).ok() {
                     Some(event) => events.push(event),

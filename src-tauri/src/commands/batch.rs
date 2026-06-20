@@ -243,7 +243,7 @@ pub async fn print_photos(
         .map(|c| if watermark { crate::canvas::compositor::apply_watermark(&c) } else { c })
         .collect();
 
-    let tmp_dir = std::env::temp_dir().join("magnet_print");
+    let tmp_dir = std::env::temp_dir().join("orenew_print");
     std::fs::create_dir_all(&tmp_dir).tauri()?;
 
     let mut paths: Vec<PathBuf> = Vec::new();

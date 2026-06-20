@@ -14,7 +14,7 @@ pub struct Event {
     pub canvas_presets: Vec<CanvasPreset>,
     pub output_folder: Option<PathBuf>,
     pub active_frame_preset_id: Option<Uuid>,
-    /// Last-used canvas preset; restored on reload (default keeps old magnet.json valid).
+    /// Last-used canvas preset; restored on reload (serde default tolerates older event files).
     #[serde(default)]
     pub active_canvas_preset_id: Option<Uuid>,
 }
