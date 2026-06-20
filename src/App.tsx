@@ -21,14 +21,14 @@ import { listDevices, currentDeviceHash } from "./lib/auth";
 import { reorderById } from "./lib/reorder";
 import { rangeIds } from "./lib/selection";
 import { EVENTS } from "./constants";
-import { MagnetEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
+import { OrenewEvent, Orientation, Photo, PhotoBatch, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
 
 export default function App() {
   const { t, i18n } = useTranslation();
-  const [event, setEvent] = useState<MagnetEvent | null>(null);
+  const [event, setEvent] = useState<OrenewEvent | null>(null);
   const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
@@ -153,7 +153,7 @@ export default function App() {
     return () => { unsub.then(fn => fn()); unsub2.then(fn => fn()); unsub3.then(fn => fn()); };
   }, []);
 
-  // Completes OAuth sign-in when the magnetapp://auth-callback deep link arrives.
+  // Completes OAuth sign-in when the orenew://auth-callback deep link arrives.
   useAuthDeepLink(handleAuthResult);
 
   useFsWatcher(event, activeBatch, {
@@ -169,7 +169,7 @@ export default function App() {
 
   // Seed the global copy-queue from each photo's persisted `copies` (across all
   // batches), so a reopened event restores the last values instead of resetting to 1.
-  function seedQueueFromEvent(evt: MagnetEvent): Record<string, number> {
+  function seedQueueFromEvent(evt: OrenewEvent): Record<string, number> {
     const q: Record<string, number> = {};
     const all: string[] = [];
     for (const b of evt.batches) {
@@ -215,7 +215,7 @@ export default function App() {
       const folder = await open({ directory: true, multiple: false });
       if (!folder) return;
       setStatus(t("app.loading"));
-      const evt = await invoke<MagnetEvent>("open_event", { path: folder });
+      const evt = await invoke<OrenewEvent>("open_event", { path: folder });
       setEvent(evt);
       setActiveBatch(evt.batches[0] ?? null);
       clearSelection();
@@ -254,7 +254,7 @@ export default function App() {
     );
     if (!yes) return;
     try {
-      const updated = await invoke<MagnetEvent>("delete_batch", { eventId: event.id, batchId: batch.id });
+      const updated = await invoke<OrenewEvent>("delete_batch", { eventId: event.id, batchId: batch.id });
       updateEvent(updated);
       if (activeBatch?.id === batch.id) {
         setActiveBatch(updated.batches[0] ?? null);
@@ -328,7 +328,7 @@ export default function App() {
       });
       if (!folder) return;
       setStatus(t("app.loadingBatch"));
-      const updated = await invoke<MagnetEvent>("add_batch", { eventId: event.id, folder });
+      const updated = await invoke<OrenewEvent>("add_batch", { eventId: event.id, folder });
       updateEvent(updated);
       const newBatch = updated.batches[updated.batches.length - 1];
       if (newBatch) setActiveBatch(newBatch); // seenIdsRef effect seeds its photos to qty 1
@@ -339,7 +339,7 @@ export default function App() {
     }
   }
 
-  function updateEvent(updated: MagnetEvent) {
+  function updateEvent(updated: OrenewEvent) {
     setEvent(updated);
     if (activeBatch) {
       const refreshed = updated.batches.find((b) => b.id === activeBatch.id);

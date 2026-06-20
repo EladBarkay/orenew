@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useThumbnail } from "../hooks/useThumbnail";
 import { useFramedPreview } from "../hooks/useFramedPreview";
-import { MagnetEvent, Orientation, Photo } from "../types";
+import { OrenewEvent, Orientation, Photo } from "../types";
 import { basename } from "../lib/paths";
 import { QtyButton } from "./ui";
 
 type Props = {
-  event: MagnetEvent;
+  event: OrenewEvent;
   photo: Photo;
   onClose: () => void;
   /** Bumped when a frame PNG changes on disk, to force preview refetch. */

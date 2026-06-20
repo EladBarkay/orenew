@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MagnetEvent, PhotoBatch } from "../types";
+import { OrenewEvent, PhotoBatch } from "../types";
 import type { SortKey } from "../App";
 import { PictureIcon, TrashIcon } from "./icons";
 
 type Props = {
-  event: MagnetEvent;
+  event: OrenewEvent;
   activeBatch: PhotoBatch | null;
   draggedBatchId: string | null;
   setDraggedBatchId: (id: string | null) => void;

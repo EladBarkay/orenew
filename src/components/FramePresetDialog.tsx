@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
-import { FramePreset, MagnetEvent } from "../types";
+import { FramePreset, OrenewEvent } from "../types";
 import { Modal, Field, PathPicker } from "./ui";
 import { useAsyncForm } from "../hooks/useAsyncForm";
 import { useFrameThumbnail } from "../hooks/useFrameThumbnail";
 
 type Props = {
-  event: MagnetEvent;
-  onCreated: (updatedEvent: MagnetEvent) => void;
+  event: OrenewEvent;
+  onCreated: (updatedEvent: OrenewEvent) => void;
   onClose: () => void;
   /** When provided, the dialog edits this preset instead of creating a new one. */
   editing?: FramePreset;
@@ -60,7 +60,7 @@ export default function FramePresetDialog({ event, onCreated, onClose, editing }
           eventId: event.id, preset: input,
         });
         // Set as active and persist
-        const updatedEvent: MagnetEvent = {
+        const updatedEvent: OrenewEvent = {
           ...event,
           frame_presets: [...event.frame_presets, preset],
           active_frame_preset_id: preset.id,

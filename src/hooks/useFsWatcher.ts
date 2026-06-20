@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MagnetEvent, PhotoBatch } from "../types";
+import { OrenewEvent, PhotoBatch } from "../types";
 import { EVENTS } from "../constants";
 import { parentDir } from "../lib/paths";
 
 type Handlers = {
-  onEvent: (e: MagnetEvent) => void;
+  onEvent: (e: OrenewEvent) => void;
   onActiveBatch: (b: PhotoBatch) => void;
   onFrameChanged: () => void;
 };
@@ -20,7 +20,7 @@ type Handlers = {
  * stale closures, so passing fresh `event`/`activeBatch` each render is fine.
  */
 export function useFsWatcher(
-  event: MagnetEvent | null,
+  event: OrenewEvent | null,
   activeBatch: PhotoBatch | null,
   handlers: Handlers
 ) {
@@ -56,7 +56,7 @@ export function useFsWatcher(
       const batch = cur.batches.find((b) => norm(b.source_path) === folder);
       if (!batch) return;
       try {
-        const updated = await invoke<MagnetEvent>("refresh_batch", {
+        const updated = await invoke<OrenewEvent>("refresh_batch", {
           eventId: cur.id,
           batchId: batch.id,
         });

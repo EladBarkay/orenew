@@ -73,7 +73,7 @@ export type AuthResult =
   | ({ kind: "entitlement" } & Entitlement)
   | { kind: "device_limit"; devices: Device[] };
 
-export type MagnetEvent = {
+export type OrenewEvent = {
   id: string;
   name: string;
   root_path: string | null;

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { CanvasPreset, MagnetEvent } from "../types";
+import { CanvasPreset, OrenewEvent } from "../types";
 import { Field, NumInput } from "./ui";
 import { useAsyncForm } from "../hooks/useAsyncForm";
 
 type Props = {
-  event: MagnetEvent;
-  onCreated: (preset: CanvasPreset, updatedEvent: MagnetEvent) => void;
+  event: OrenewEvent;
+  onCreated: (preset: CanvasPreset, updatedEvent: OrenewEvent) => void;
   onCancel: () => void;
   /** When provided, the form edits this preset instead of creating a new one. */
   editing?: CanvasPreset;

@@ -67,10 +67,10 @@ export function PictureIcon({ className = "w-16 h-16" }: IconProps) {
   );
 }
 
-// MagNet brand mark — "Magnetic Iris" (D1, depth variant). Faceted aperture blades
+// Orenew brand mark — "Magnetic Iris" (D1, depth variant). Faceted aperture blades
 // (stepped fill-opacity) + open-base rim. Color via currentColor; paths verbatim from
-// magnet-lens-preview.html (#lens). Use flat variant for ≤16px (favicon: public/magnet.svg).
-export function MagnetLogo({ className = "w-6 h-6" }: IconProps) {
+// orenew-lens-preview.html (#lens). Use flat variant for ≤16px (favicon: public/orenew.svg).
+export function OrenewLogo({ className = "w-6 h-6" }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
       <path fillOpacity={0.5} d="M189 139.95 A134 134 0 0 1 323 139.95 L281.98 241 L256 226 Z" />

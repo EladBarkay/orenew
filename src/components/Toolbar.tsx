@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { Entitlement, MagnetEvent } from "../types";
-import { MagnetLogo, SettingsIcon, SlidersIcon, TrashIcon } from "./icons";
+import { Entitlement, OrenewEvent } from "../types";
+import { OrenewLogo, SettingsIcon, SlidersIcon, TrashIcon } from "./icons";
 import { tierLabel, tierColor } from "../lib/tiers";
 
 type Props = {
-  event: MagnetEvent | null;
+  event: OrenewEvent | null;
   entitlement: Entitlement | null;
   status: string;
   totalPhotos: number;
@@ -23,8 +23,8 @@ export default function Toolbar({
 
   return (
     <header className="flex items-center gap-3 px-4 py-2.5 bg-neutral-900 border-b border-neutral-800 shrink-0">
-      <MagnetLogo className="w-6 h-6 text-accent" />
-      <span className="font-bold text-base tracking-tight text-white">MagNet</span>
+      <OrenewLogo className="w-6 h-6 text-accent" />
+      <span className="font-bold text-base tracking-tight text-white">Orenew</span>
       <div className="w-px h-4 bg-neutral-600" />
       <button onClick={onOpenEvent}
         className="px-3 py-1.5 bg-accent hover:bg-accent-hover active:bg-accent-active rounded text-sm font-medium transition-colors">
