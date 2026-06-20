@@ -1,6 +1,6 @@
 # Supabase setup
 
-MagNet uses Supabase for identity (sign-in) and authorization (tier). The app
+Orenew uses Supabase for identity (sign-in) and authorization (tier). The app
 treats **Rust as the source of truth**: the frontend only drives interactive
 sign-in, then hands the session to Rust, which verifies the JWT against Supabase's
 public JWKS and then mints a device-bound, **signed entitlement token** via the
@@ -22,7 +22,7 @@ In **Authentication → Providers**, enable:
 
 > **Authorized redirect URI for Google/Meta is Supabase's own callback:**
 > `https://<project-ref>.supabase.co/auth/v1/callback`.
-> Google/Meta never see the `magnetapp://` custom scheme — that is only the final
+> Google/Meta never see the `orenew://` custom scheme — that is only the final
 > Supabase→app hop (configured in step 2). Paste each provider's client id +
 > secret into Supabase.
 
@@ -31,7 +31,7 @@ In **Authentication → Providers**, enable:
 In **Authentication → URL Configuration → Redirect URLs**, add:
 
 ```
-magnetapp://auth-callback
+orenew://auth-callback
 ```
 
 Supabase permits non-HTTP schemes here for native/desktop apps. This is where the
@@ -127,8 +127,8 @@ makes the offline cache tamper-resistant and binds a seat to a machine.
 
 The desktop OAuth flow opens the system browser at the Supabase authorize URL,
 which redirects to Google and back to the app via the custom deep link
-`magnetapp://auth-callback` (PKCE; `useAuthDeepLink` exchanges the code). The
-app registers the `magnetapp://` scheme with the OS at runtime
+`orenew://auth-callback` (PKCE; `useAuthDeepLink` exchanges the code). The
+app registers the `orenew://` scheme with the OS at runtime
 (`lib.rs` → `deep_link().register_all()`), so the callback reaches dev builds too.
 
 For sign-in to actually complete, configure the Supabase project:
@@ -137,7 +137,7 @@ For sign-in to actually complete, configure the Supabase project:
    ID + secret.
 2. **Google Cloud Console** → that OAuth client → *Authorized redirect URIs* →
    add `https://<project-ref>.supabase.co/auth/v1/callback`.
-3. **Auth → URL Configuration → Redirect URLs**: add `magnetapp://auth-callback`.
+3. **Auth → URL Configuration → Redirect URLs**: add `orenew://auth-callback`.
    If this is missing, the authorize page stalls instead of redirecting to
    Google (the `redirect_to` is rejected).
 

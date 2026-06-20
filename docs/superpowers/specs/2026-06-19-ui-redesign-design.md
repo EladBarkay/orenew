@@ -1,17 +1,17 @@
-# MagNet UI Redesign — Design Spec
+# Orenew UI Redesign — Design Spec
 
 **Date:** 2026-06-19
 **Status:** Approved (design); pending implementation plan
 
 ## Context
 
-MagNet's current UI is a dense, dark, three-pane "pro tool": a top toolbar, a
+Orenew's current UI is a dense, dark, three-pane "pro tool": a top toolbar, a
 left sidebar stacking batches + frame presets + canvas presets (all drag-reorderable),
 a center gallery with its own sub-toolbar, and a resizable right preview panel. It
 works, but everything is visible at once and the primary loop (dump SD card → set
 copies → export) competes for attention with preset management and panel chrome.
 
-The photographer uses MagNet **live at the event**: dim room, time pressure, the same
+The photographer uses Orenew **live at the event**: dim room, time pressure, the same
 loop repeated per SD card. The redesign keeps **all existing functionality** but
 restructures the app around that loop — grid-first, fewer always-visible controls,
 larger targets, keyboard-driven, faster to scan.
@@ -45,7 +45,7 @@ larger targets, keyboard-driven, faster to scan.
 
 ```
 +-----------------------------------------------------------+
-| (◉) MagNet   ·   Event Name        [Open Event]   (⚙ Pro) |   top bar
+| (◉) Orenew   ·   Event Name        [Open Event]   (⚙ Pro) |   top bar
 +-----------------------------------------------------------+
 | ⬚ Batch1 *   ⬚ Batch2   ⬚ Batch3   +      [hide empty] [◧] |   batch tab strip + view controls
 +-----------------------------------------------------------+
@@ -127,7 +127,7 @@ Both frame and canvas presets are selected and managed **inside the Export dialo
   highlighted. Selection persists as the event's sticky default. Frames already use
   `active_frame_preset_id`; add a parallel persisted `active_canvas_preset_id` on
   `Event` so the **last-used canvas is remembered across app reloads** (written to
-  `magnet.json` via `save_event`, same path as the frame default).
+  `orenew.json` via `save_event`, same path as the frame default).
 - A small **Manage** control opens add/edit/delete/reorder, reusing the existing
   `FramePresetDialog` and `CanvasPresetForm` components and the existing
   create/update/delete/reorder IPC commands. Reorder reuses `reorderById` + `save_event`.
@@ -180,6 +180,6 @@ custom-property tokens in `index.css` for the new palette so surfaces stay consi
 
 ## Resolved decisions
 - **Sticky canvas default:** persist `active_canvas_preset_id` on `Event` (in
-  `magnet.json`); the last-used canvas is restored on app reload.
+  `orenew.json`); the last-used canvas is restored on app reload.
 - **Grid-size control:** support all three — visible − / + buttons, Ctrl + wheel, and
   Ctrl + − / + keyboard.

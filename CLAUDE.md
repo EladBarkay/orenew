@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MagNet** is a cross-platform desktop application for event photographers to batch-apply custom decorative frames to photos for printing and magnet production. The photographer works one event at a time; each event has multiple photo batches (one per SD card dump), per-event frame PNGs, canvas presets for print/export, and a fixed output folder.
+**Orenew** is a cross-platform desktop application for event photographers to batch-apply custom decorative frames to photos for printing and magnet production. The photographer works one event at a time; each event has multiple photo batches (one per SD card dump), per-event frame PNGs, canvas presets for print/export, and a fixed output folder.
 
 ## Tech Stack
 
@@ -28,12 +28,12 @@ The photographer's source folder is **never modified**. All app state lives in i
 
 ```
 {app_data}/
-  events/{event_id}/magnet.json   # all event state
+  events/{event_id}/orenew.json   # all event state
   thumbs/                          # thumbnail cache (SHA-256 keyed)
   license.json
 ```
 
-When opening a folder, the app matches it against `source_path` in existing `magnet.json` files to resume, or creates a new event.
+When opening a folder, the app matches it against `source_path` in existing `orenew.json` files to resume, or creates a new event.
 
 ### Core Data Model
 
@@ -104,10 +104,10 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 > Reflects the actual codebase (kept in sync — do not revert to the original plan).
 
 ```
-magnet/
+orenew/
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs            # thin entry → magnet_lib::run()
+│   │   ├── main.rs            # thin entry → orenew_lib::run()
 │   │   ├── lib.rs             # AppState, Tauri builder, invoke_handler, license load
 │   │   ├── commands/          # Thin Tauri IPC handlers
 │   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches, open_in_explorer
@@ -183,7 +183,7 @@ If the subscription is at its device-seat limit, `issue-entitlement` returns
 with `kind: "device_limit"`, the UI opens `DeviceManagerDialog`, the user
 disconnects a device (`disconnect-device`), and provisioning retries.
 
-OAuth uses PKCE and returns via the custom deep link `magnetapp://auth-callback`
+OAuth uses PKCE and returns via the custom deep link `orenew://auth-callback`
 (`tauri-plugin-deep-link`, handled by `useAuthDeepLink`); Google/Meta only ever
 see Supabase's HTTPS callback, never the custom scheme.
 
@@ -221,7 +221,7 @@ Components pull strings with `useTranslation()` → `t("area.key", { count, ...v
 counts use i18next plurals, variables use `{{interpolation}}`.
 
 The language switcher is a dropdown in `SettingsDialog`; the choice persists in
-`localStorage` (`magnet.lang`). `i18n.ts` keeps `<html lang/dir>` in sync on init and
+`localStorage` (`orenew.lang`). `i18n.ts` keeps `<html lang/dir>` in sync on init and
 on every `languageChanged`, so **Hebrew switches the whole app to RTL** via the native
 `dir="rtl"` attribute. Layout flips rely on **Tailwind logical utilities** (`ms-`/`me-`,
 `ps-`/`pe-`, `border-s`/`border-e`, `text-start`, `start-`/`end-`) instead of physical
