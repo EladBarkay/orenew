@@ -59,18 +59,25 @@ impl EventStore {
         Ok(())
     }
 
-    /// Write all dirty events to disk via the atomic `save_json` path, clearing
-    /// the dirty set. Called by the background flush task and the close hook.
+    /// Write the cached event to disk via the atomic `save_json` path. No dirty
+    /// bookkeeping — callers own that (they differ on drain/re-mark policy).
+    fn write_event(&self, id: Uuid) -> Result<()> {
+        let event = self.cache.lock().unwrap().get(&id).cloned();
+        if let Some(event) = event {
+            save_json(&self.event_path(id), &event)?;
+        }
+        Ok(())
+    }
+
+    /// Write all dirty events to disk, clearing the dirty set. Called by the
+    /// background flush task and the close hook.
     pub fn flush_dirty(&self) -> Result<()> {
         let ids: Vec<Uuid> = { self.dirty.lock().unwrap().drain().collect() };
         for id in ids {
-            let event = self.cache.lock().unwrap().get(&id).cloned();
-            if let Some(event) = event {
-                if let Err(e) = save_json(&self.event_path(id), &event) {
-                    // re-mark dirty so a transient write error retries next flush
-                    self.dirty.lock().unwrap().insert(id);
-                    return Err(e);
-                }
+            if let Err(e) = self.write_event(id) {
+                // re-mark dirty so a transient write error retries next flush
+                self.dirty.lock().unwrap().insert(id);
+                return Err(e);
             }
         }
         Ok(())
@@ -78,11 +85,8 @@ impl EventStore {
 
     /// Flush a single event to disk immediately (durability-critical writes).
     pub fn flush_one(&self, id: Uuid) -> Result<()> {
-        let event = self.cache.lock().unwrap().get(&id).cloned();
-        if let Some(event) = event {
-            save_json(&self.event_path(id), &event)?;
-            self.dirty.lock().unwrap().remove(&id);
-        }
+        self.write_event(id)?;
+        self.dirty.lock().unwrap().remove(&id);
         Ok(())
     }
 
