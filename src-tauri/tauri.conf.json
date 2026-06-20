@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MagNet",
+  "productName": "Orenew",
   "version": "0.1.0",
-  "identifier": "com.magnet.app",
+  "identifier": "com.orenew.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MagNet",
+        "title": "Orenew",
         "width": 1280,
         "height": 800,
         "minWidth": 960,
@@ -27,7 +27,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["magnetapp"]
+        "schemes": ["orenew"]
       }
     }
   },

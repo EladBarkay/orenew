@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn cache_round_trip() {
-        let dir = std::env::temp_dir().join(format!("magnet-ent-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("orenew-ent-{}", uuid::Uuid::new_v4()));
         let path = dir.join("entitlement.json");
         let mut e = Entitlement::free();
         e.email = Some("a@b.com".into());

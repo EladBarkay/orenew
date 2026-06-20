@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { CanvasPreset, FramePreset, MagnetEvent } from "../types";
+import { CanvasPreset, FramePreset, OrenewEvent } from "../types";
 import { Modal, Field, Chip, PresetOption } from "./ui";
 import { EditIcon, TrashIcon } from "./icons";
 
 type Props = {
-  event: MagnetEvent;
+  event: OrenewEvent;
   onClose: () => void;
-  onEventUpdate: (e: MagnetEvent) => void;
+  onEventUpdate: (e: OrenewEvent) => void;
   onAddFrame: () => void;
   onEditFrame: (p: FramePreset) => void;
   onDeleteFrame: (p: FramePreset) => void;

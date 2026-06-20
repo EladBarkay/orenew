@@ -6,13 +6,13 @@ use sha2::{Digest, Sha256};
 
 /// Salt mixed into the machine id so the stored/transmitted value can't be
 /// reversed to the raw hardware id and isn't comparable across apps.
-const DEVICE_SALT: &str = "magnet-device-binding-v1";
+const DEVICE_SALT: &str = "orenew-device-binding-v1";
 
 /// Stable, non-reversible per-machine identifier (hex SHA-256 of the salted
 /// `machine-uid`). Falls back to a constant marker if the OS id is unavailable,
 /// so the app still functions (it just shares one logical "seat").
 pub fn device_hash() -> String {
-    let raw = machine_uid::get().unwrap_or_else(|_| "magnet-unknown-machine".to_string());
+    let raw = machine_uid::get().unwrap_or_else(|_| "orenew-unknown-machine".to_string());
     let mut hasher = Sha256::new();
     hasher.update(DEVICE_SALT.as_bytes());
     hasher.update(raw.as_bytes());

@@ -71,7 +71,7 @@ pub fn run() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     // Single-instance must be the FIRST plugin. With the deep-link feature it
-    // routes the magnetapp:// OAuth callback to the already-running app (and
+    // routes the orenew:// OAuth callback to the already-running app (and
     // focuses it) instead of Windows launching a second instance/window.
     #[cfg(desktop)]
     {
@@ -128,7 +128,7 @@ pub fn run() {
                 preview_cache: Arc::new(Mutex::new(HashMap::new())),
             });
 
-            // Register the magnetapp:// scheme with the OS at runtime so the
+            // Register the orenew:// scheme with the OS at runtime so the
             // OAuth callback deep link reaches the app on Windows/Linux dev and
             // unpackaged builds (installers register it, but dev runs don't).
             #[cfg(desktop)]

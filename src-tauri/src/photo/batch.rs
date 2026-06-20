@@ -150,7 +150,7 @@ mod tests {
     }
 
     fn write_temp_jpeg(name: &str, w: u32, h: u32, color: Rgba<u8>) -> PathBuf {
-        let dir = std::env::temp_dir().join("magnet_tests");
+        let dir = std::env::temp_dir().join("orenew_tests");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(name);
         DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, color))

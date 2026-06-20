@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn opaque_frame_covers_base_pixels() {
-        let dir = std::env::temp_dir().join("magnet_frame_tests");
+        let dir = std::env::temp_dir().join("orenew_frame_tests");
         std::fs::create_dir_all(&dir).unwrap();
         let frame_path = dir.join("opaque.png");
         DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 20, Rgba([0, 0, 0, 255])))

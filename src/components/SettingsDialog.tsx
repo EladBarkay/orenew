@@ -20,7 +20,7 @@ type Props = {
   onManageDevices: () => void;
 };
 
-const BUY_URL = "https://magnet.app/pricing";
+const BUY_URL = "https://orenew.app/pricing"; // TODO: confirm final domain
 
 export default function SettingsDialog({
   entitlement,
@@ -60,7 +60,7 @@ export default function SettingsDialog({
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: "magnetapp://auth-callback",
+          redirectTo: "orenew://auth-callback",
           skipBrowserRedirect: true,
         },
       });

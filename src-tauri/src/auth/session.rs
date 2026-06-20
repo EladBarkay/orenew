@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn cache_round_trip() {
-        let dir = std::env::temp_dir().join(format!("magnet-sess-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("orenew-sess-{}", uuid::Uuid::new_v4()));
         let path = dir.join("session.json");
         let s = Session {
             access_token: "at".into(),

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CanvasPreset, FramePreset, MagnetEvent } from "../types";
+import { CanvasPreset, FramePreset, OrenewEvent } from "../types";
 import { SaveProgress, useSaveProgress } from "../hooks/useSaveProgress";
 import { Modal, Field, Chip, PresetOption } from "./ui";
 import { EditIcon, TrashIcon } from "./icons";
@@ -10,10 +10,10 @@ import { EditIcon, TrashIcon } from "./icons";
 type Destination = "print" | "save";
 
 type Props = {
-  event: MagnetEvent;
+  event: OrenewEvent;
   photoQueue: Record<string, number>;
   onClose: () => void;
-  onEventUpdate: (e: MagnetEvent) => void;
+  onEventUpdate: (e: OrenewEvent) => void;
   onExported: (destination: Destination, quantities: Record<string, number>) => void;
   onAddFrame: () => void;
   onEditFrame: (p: FramePreset) => void;

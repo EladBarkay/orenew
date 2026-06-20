@@ -13,7 +13,7 @@ export const LANGS: { code: LangCode; label: string; dir: "ltr" | "rtl" }[] = [
   { code: "he", label: "עברית", dir: "rtl" },
 ];
 
-const STORAGE_KEY = "magnet.lang";
+const STORAGE_KEY = "orenew.lang";
 
 export function dirFor(lng: string): "ltr" | "rtl" {
   return LANGS.find((l) => l.code === lng)?.dir ?? "ltr";

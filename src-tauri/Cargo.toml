@@ -1,12 +1,12 @@
 [package]
-name = "magnet"
+name = "orenew"
 version = "0.1.0"
-description = "MagNet — batch photo framing for event photographers"
+description = "Orenew — batch photo framing for event photographers"
 authors = []
 edition = "2021"
 
 [lib]
-name = "magnet_lib"
+name = "orenew_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -59,7 +59,7 @@ anyhow = "1"
 log = "0.4"
 rustface = "0.1.7"
 
-# Desktop-only: forward the magnetapp:// OAuth callback to the running app
+# Desktop-only: forward the orenew:// OAuth callback to the running app
 # (with the deep-link feature) instead of spawning a second window.
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

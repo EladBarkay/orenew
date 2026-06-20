@@ -2478,37 +2478,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "magnet"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dotenvy",
- "fast_image_resize",
- "image",
- "jsonwebtoken",
- "kamadak-exif",
- "log",
- "machine-uid",
- "notify",
- "rayon",
- "reqwest 0.12.28",
- "rustface",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-deep-link",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tokio",
- "uuid",
- "whoami",
-]
-
-[[package]]
 name = "markup5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3065,6 +3034,37 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "orenew"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dotenvy",
+ "fast_image_resize",
+ "image",
+ "jsonwebtoken",
+ "kamadak-exif",
+ "log",
+ "machine-uid",
+ "notify",
+ "rayon",
+ "reqwest 0.12.28",
+ "rustface",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tokio",
+ "uuid",
+ "whoami",
 ]
 
 [[package]]

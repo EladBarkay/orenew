@@ -1,10 +1,10 @@
-# MagNet
+# Orenew
 
 **Batch photo framing for event photographers — Tauri v2 desktop app (Windows / macOS / Linux)**
 
 > v0.1.0 — feature-complete demo build
 
-MagNet lets photographers drag in an SD card dump, pick a decorative frame PNG per event, and export or print composite canvases (magnets, 2-up prints, etc.) in one click. Every source photo is read-only; all state lives in an internal JSON store. The heavy image work runs in Rust with SIMD resize and a bounded rayon pool.
+Orenew lets photographers drag in an SD card dump, pick a decorative frame PNG per event, and export or print composite canvases (magnets, 2-up prints, etc.) in one click. Every source photo is read-only; all state lives in an internal JSON store. The heavy image work runs in Rust with SIMD resize and a bounded rayon pool.
 
 ---
 
@@ -48,7 +48,7 @@ MagNet lets photographers drag in an SD card dump, pick a decorative frame PNG p
 
 ```bash
 git clone <repo-url>
-cd MagNet
+cd orenew
 npm install
 npm run tauri dev
 ```
@@ -62,7 +62,7 @@ The dev profile deliberately compiles dependencies at `opt-level 3` while your o
 ## Project Structure
 
 ```
-MagNet/
+orenew/
 ├── src/                        # React frontend
 │   ├── App.tsx                 # Root component — all UI state lives here
 │   ├── types.ts                # TypeScript mirrors of the Rust data model
@@ -82,7 +82,7 @@ MagNet/
 │   │   ├── useFramedPreview.ts     # Fetch 1200px framed preview on demand
 │   │   ├── useFsWatcher.ts         # Listen for `fs-changed` Tauri events
 │   │   ├── useSaveProgress.ts      # Subscribe to `save-progress` Tauri events
-│   │   └── useAuthDeepLink.ts      # Handle magnet://auth-callback OAuth deep link
+│   │   └── useAuthDeepLink.ts      # Handle orenew://auth-callback OAuth deep link
 │   └── lib/
 │       ├── paths.ts            # basename(), batchDisplayPath() helpers
 │       ├── supabase.ts         # supabase-js client (PKCE)
@@ -90,7 +90,7 @@ MagNet/
 │
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs             # Entry point → magnet_lib::run()
+│   │   ├── main.rs             # Entry point → orenew_lib::run()
 │   │   ├── lib.rs              # AppState, Tauri builder, invoke_handler, startup license load
 │   │   ├── commands/           # Thin Tauri IPC handlers — no business logic
 │   │   │   ├── project.rs      # open/create/save/delete event, batches, refresh_batch, sync_watches
@@ -141,13 +141,13 @@ Photos are **never written or modified**. All app state is stored internally:
 
 ```
 {app_data}/
-  events/{event_id}/magnet.json   # event metadata, presets, print counts
+  events/{event_id}/orenew.json   # event metadata, presets, print counts
   thumbs/{sha256}.jpg             # thumbnail cache
   session.json                    # Supabase session (refresh token)
   entitlement.json                # cached tier + expiry (14-day offline grace)
 ```
 
-When you open a folder, the app matches it against `source_path` in existing `magnet.json` files to resume an event, or creates a new one automatically.
+When you open a folder, the app matches it against `source_path` in existing `orenew.json` files to resume an event, or creates a new one automatically.
 
 ### Data model
 
@@ -211,7 +211,7 @@ only the caller's row). Session + entitlement are cached to `session.json` /
 `entitlement.json`. Offline use is allowed for **14 days** from the last successful
 verification; after that the app falls back to Free.
 
-OAuth uses PKCE and returns through the custom deep link `magnet://auth-callback`
+OAuth uses PKCE and returns through the custom deep link `orenew://auth-callback`
 (`tauri-plugin-deep-link`). Google/Meta only ever see Supabase's HTTPS callback,
 never the custom scheme.
 
@@ -249,7 +249,6 @@ Backend (baked in at `cargo build` via `build.rs` — override with real env var
 |---|---|---|
 | `SUPABASE_URL` | Supabase project URL. | `https://YOUR_PROJECT_REF.supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase anon key (public, safe to ship). | `YOUR_SUPABASE_ANON_KEY` |
-| `MAGNET_DEV_TIER` | Developer bypass — `pro` or `studio` seeds that tier with no sign-in. Unset = normal auth. | _(unset)_ |
 
 Frontend (read via `import.meta.env`, see `.env.example`):
 

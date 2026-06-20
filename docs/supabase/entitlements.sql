@@ -1,4 +1,4 @@
--- MagNet entitlements: one row per user, the single source of truth for tier.
+-- Orenew entitlements: one row per user, the single source of truth for tier.
 -- Run in the Supabase SQL editor (or via the CLI) on the project.
 
 create table public.entitlements (
