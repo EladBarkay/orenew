@@ -33,6 +33,28 @@ fn main() {
         .replace('\n', "\\n");
     println!("cargo:rustc-env=ENTITLEMENT_PUBLIC_KEY={ent_key}");
 
+    // Refuse to ship a release build with placeholder credentials — that would
+    // produce an installer where sign-in is dead and everyone silently lands on
+    // Free. Debug/dev builds stay lenient so local work without Supabase compiles.
+    if std::env::var("PROFILE").as_deref() == Ok("release") {
+        let unset: Vec<&str> = [
+            ("SUPABASE_URL", url.contains("YOUR_PROJECT_REF")),
+            ("SUPABASE_ANON_KEY", anon_key == "YOUR_SUPABASE_ANON_KEY"),
+            ("ENTITLEMENT_PUBLIC_KEY", ent_key.contains("UNCONFIGURED")),
+        ]
+        .into_iter()
+        .filter(|(_, is_placeholder)| *is_placeholder)
+        .map(|(name, _)| name)
+        .collect();
+        if !unset.is_empty() {
+            panic!(
+                "release build aborted: {} still at placeholder value(s). \
+                 Set them via the repo-root .env or real env vars before `tauri build`.",
+                unset.join(", ")
+            );
+        }
+    }
+
     println!("cargo:rerun-if-env-changed=SUPABASE_URL");
     println!("cargo:rerun-if-env-changed=SUPABASE_ANON_KEY");
     println!("cargo:rerun-if-env-changed=ENTITLEMENT_PUBLIC_KEY");
