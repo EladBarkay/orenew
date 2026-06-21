@@ -20,7 +20,9 @@ Orenew lets photographers drag in an SD card dump, pick a decorative frame PNG p
 | EXIF / XMP | `kamadak-exif` + `quick-xml` |
 | Parallelism | `rayon` (CPU-bound batch), `tokio` (async IPC) |
 | File watching | `notify` crate |
-| Auth / entitlements | Supabase Auth (email + Google/Facebook); Rust-verified JWT (JWKS) + `entitlements` table (RLS); 14-day offline grace |
+| Auth / entitlements | Supabase Auth (email + Google/Facebook); Rust-verified JWT (JWKS) + server-signed EdDSA device-bound entitlement token; 14-day offline grace |
+| Face detection | `rustface` (SeetaFace2), embedded model — "suggest copies" |
+| Updates | `tauri-plugin-updater` (signed) |
 
 ---
 
@@ -67,38 +69,54 @@ orenew/
 │   ├── App.tsx                 # Root component — all UI state lives here
 │   ├── types.ts                # TypeScript mirrors of the Rust data model
 │   ├── components/             # UI components (flat, no subfolders)
-│   │   ├── Toolbar.tsx         # Top bar: open event, batch-wide qty stepper, print/export
-│   │   ├── Sidebar.tsx         # Event tree: batches + frame presets + canvas presets
-│   │   ├── Gallery.tsx         # react-window virtual grid of photo thumbnails
-│   │   ├── PhotoCard.tsx       # Thumbnail tile + qty stepper (bottom overlay)
-│   │   ├── PreviewPanel.tsx    # Framed preview + orientation override + export/print counts
-│   │   ├── ExportDialog.tsx    # Export config, per-photo qty, progress bar
-│   │   ├── PrintConfirmDialog.tsx  # Frame + canvas preset pickers → print
+│   │   ├── Toolbar.tsx         # Slim top band: logo, event name, open/configure/delete, tier, settings
+│   │   ├── BatchTabs.tsx       # Batch tab strip (drag-reorder) + view controls (grid size, sort, hide-empty)
+│   │   ├── ActionBar.tsx       # Sticky bottom band: queued totals + Export; bulk controls + "Suggest copies" on selection
+│   │   ├── Gallery.tsx         # react-window virtual grid of photo thumbnails (selection-aware)
+│   │   ├── PhotoCard.tsx       # Thumbnail tile + qty stepper (bottom overlay; dimmed at qty 0)
+│   │   ├── Lightbox.tsx        # Full-screen framed preview + nav + orientation/frame/copies/counts
+│   │   ├── ExportDialog.tsx    # Print/save config: frame + canvas preset pick + manage, progress
 │   │   ├── FramePresetDialog.tsx   # Create / edit frame preset
-│   │   ├── CanvasPresetManager.tsx # List / edit / delete canvas presets
-│   │   └── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook) + tier display
+│   │   ├── CanvasPresetForm.tsx    # Create / edit canvas preset (used in ExportDialog + EventConfigDialog)
+│   │   ├── EventConfigDialog.tsx   # Event-level frame + canvas preset management
+│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier, devices, language
+│   │   ├── DeviceManagerDialog.tsx # Device-seat picker (seat-limit interrupt + disconnect)
+│   │   ├── EmptyState.tsx          # Empty gallery placeholder
+│   │   ├── icons.tsx               # Inline SVG icon components
+│   │   └── ui.tsx                  # Shared Modal + primitive UI components
 │   ├── hooks/
 │   │   ├── useThumbnail.ts         # Fetch + cache 256px thumbnail (keyed on content_hash)
-│   │   ├── useFramedPreview.ts     # Fetch 1200px framed preview on demand
+│   │   ├── useFrameThumbnail.ts    # Fetch framed thumbnail (scaled preview)
+│   │   ├── useFramedPreview.ts     # Fetch 1200px framed preview on demand (frame-nonce aware)
 │   │   ├── useFsWatcher.ts         # Listen for `fs-changed` Tauri events
 │   │   ├── useSaveProgress.ts      # Subscribe to `save-progress` Tauri events
-│   │   └── useAuthDeepLink.ts      # Handle orenew://auth-callback OAuth deep link
+│   │   ├── useAuthDeepLink.ts      # Handle orenew://auth-callback OAuth deep link
+│   │   ├── useUpdater.ts           # Best-effort signed update check on startup
+│   │   └── useAsyncForm.ts         # Form submit helper with loading/error state
+│   ├── locales/                # en.ts (source of truth) + he.ts (Hebrew, RTL)
+│   ├── i18n.ts                 # react-i18next setup; syncs <html lang/dir>
 │   └── lib/
 │       ├── paths.ts            # basename(), batchDisplayPath() helpers
+│       ├── selection.ts        # rangeIds() for Shift+click selection
+│       ├── reorder.ts          # reorderById() for batch tab drag
+│       ├── tiers.ts            # tierLabel(), tierColor() display helpers
 │       ├── supabase.ts         # supabase-js client (PKCE)
-│       └── auth.ts             # establishFromSession() → Rust establish_session
+│       └── auth.ts             # establish_session + device IPC wrappers
 │
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs             # Entry point → orenew_lib::run()
 │   │   ├── lib.rs              # AppState, Tauri builder, invoke_handler, startup license load
+│   │   ├── constants.rs        # Tauri event channel names (fs-changed, save-progress, face-scan-progress, …)
+│   │   ├── json_store.rs       # Atomic JSON load/save (tmp-then-rename) for session/entitlement caches
 │   │   ├── commands/           # Thin Tauri IPC handlers — no business logic
 │   │   │   ├── project.rs      # open/create/save/delete event, batches, refresh_batch, sync_watches
-│   │   │   ├── gallery.rs      # list_photos, get_thumbnail, get_framed_preview, orientation/crop overrides
+│   │   │   ├── gallery.rs      # get_thumbnail, get_framed_preview, orientation overrides
 │   │   │   ├── batch.rs        # save_batch, print_photos (watermark per tier)
+│   │   │   ├── faces.rs        # count_faces_in_batch — rustface (SeetaFace2) face counts
 │   │   │   ├── canvas_preset.rs
 │   │   │   ├── frame_preset.rs
-│   │   │   └── auth.rs         # establish_session, get_entitlement, sign_out
+│   │   │   └── auth.rs         # establish_session, get/refresh_entitlement, list/disconnect devices, sign_out
 │   │   ├── photo/              # Core image engine — zero Tauri deps, fully unit-tested
 │   │   │   ├── loader.rs       # load_photo(), read_exif_orientation(), compute_content_hash()
 │   │   │   ├── orientation.rs  # detect_orientation() — pixel dims + user override
@@ -115,10 +133,13 @@ orenew/
 │   │   │   ├── thumbnail.rs    # 256px disk cache at {app_cache}/thumbs/{sha256}.jpg
 │   │   │   └── framed_preview.rs  # On-demand 1200px Rust renderer
 │   │   ├── auth/
-│   │   │   ├── entitlement.rs  # Tier + Entitlement cache, grace period + expiry check
-│   │   │   ├── session.rs      # session.json (Supabase refresh token) load/save
-│   │   │   ├── jwt.rs          # verify Supabase access token against JWKS
-│   │   │   └── client.rs       # token refresh + entitlement fetch (PostgREST + RLS)
+│   │   │   ├── entitlement.rs       # Tier + Entitlement (grace ceiling at read time)
+│   │   │   ├── entitlement_token.rs # verify server-signed EdDSA (JWS) device-bound token
+│   │   │   ├── provision.rs         # mint → verify → cache entitlement token orchestration
+│   │   │   ├── device.rs            # machine-uid hash + human-readable device label
+│   │   │   ├── session.rs           # session.json (Supabase refresh token) load/save
+│   │   │   ├── jwt.rs               # verify Supabase access token against JWKS
+│   │   │   └── client.rs            # token refresh + issue/disconnect/list-devices Edge Functions
 │   │   └── watcher/
 │   │       └── fs_watcher.rs   # notify watcher → emits `fs-changed` Tauri event
 │   ├── .cargo/config.toml      # Windows: rust-lld linker + /DEBUG:FASTLINK
@@ -126,8 +147,8 @@ orenew/
 │   ├── build.rs
 │   └── tauri.conf.json
 │
+├── supabase/functions/         # Edge Functions: issue-entitlement, disconnect-device
 ├── CLAUDE.md                   # Architecture reference for Claude Code
-├── ROADMAP.md                  # Release plan and feature backlog
 └── package.json
 ```
 
@@ -144,7 +165,7 @@ Photos are **never written or modified**. All app state is stored internally:
   events/{event_id}/orenew.json   # event metadata, presets, print counts
   thumbs/{sha256}.jpg             # thumbnail cache
   session.json                    # Supabase session (refresh token)
-  entitlement.json                # cached tier + expiry (14-day offline grace)
+  entitlement.token               # server-signed EdDSA tier token (14-day offline grace)
 ```
 
 When you open a folder, the app matches it against `source_path` in existing `orenew.json` files to resume an event, or creates a new one automatically.
@@ -166,7 +187,7 @@ Event
                     └── save_count
 ```
 
-`FramePreset` stores absolute paths to two PNGs (landscape + portrait orientation variants), the target aspect ratio, and the crop method (center or rule-of-thirds).
+`FramePreset` stores absolute paths to two PNGs (landscape + portrait orientation variants) and the target aspect ratio. The crop is **always centered** (no rule-of-thirds option).
 
 `CanvasPreset` stores pixel dimensions, DPI, photos-per-canvas, and grid layout (rows × columns).
 
@@ -176,7 +197,7 @@ Event
 2. `detect_orientation()` — pixel dimensions + optional user override
 3. Compute crop ratio: landscape = preset ratio, portrait = inverted ratio
 4. SIMD crop + resize in one pass (`fast_image_resize`, no intermediate buffer)
-5. `blend_rgba_over_rgb()` — alpha-composite frame PNG over photo, in-place
+5. `overlay_frame()` — alpha-composite frame PNG over photo, in-place
 6. Rotate 90° if that better fills the canvas slot
 7. Compositor centers the result — white letterbox padding, never stretched
 8. `write_print_ready()` — JPEG q95, 300 DPI JFIF
@@ -195,6 +216,22 @@ Batch runs on a **4-thread rayon pool** (memory ceiling ~400 MB for 24 MP photos
 - Frame PNG path → clears the Rust preview cache for that preset + bumps a nonce to force re-fetch
 - Any other path → calls `refresh_batch` IPC, which recomputes `content_hash` values and resets `print_count` for changed photos
 
+### Face detection (suggest copies)
+
+A "Suggest copies" action in the ActionBar (visible in bulk-selection mode) seeds
+per-photo export quantities from the number of faces in each photo — handy when one
+magnet per guest is the norm. It runs only on click (it's heavy), with a live
+progress count.
+
+- Detector: the `rustface` crate (SeetaFace2). The frontal model
+  (`src-tauri/model/seeta_fd_frontal_v1.0.bin`, ~1.2 MB) is embedded via
+  `include_bytes!` — no runtime path to resolve.
+- Command `count_faces_in_batch(event_id, batch_id, photo_ids?)` → `{ photoId: count }`.
+  Each photo is downscaled to a 1024 px longest side before detection; the scan runs
+  on the bounded rayon pool (one detector per worker) and emits `face-scan-progress`.
+- The frontend (`App.tsx` `scanFaces`) merges positive counts into the export queue;
+  scanned photos with 0 faces fall to qty 0 (dimmed). The suggestion is editable.
+
 ### Auth & Entitlements (Supabase)
 
 Sign-in flow: email+password or Google/Facebook via Supabase Auth. The frontend
@@ -202,22 +239,34 @@ Sign-in flow: email+password or Google/Facebook via Supabase Auth. The frontend
 (`access_token` / `refresh_token` / `expires_at`) to Rust via `establish_session`.
 
 - **Free tier**: output canvases get a procedural diagonal-stripe watermark composited at export/print time. No other limits.
-- **Pro / Studio tiers**: no watermark; tier comes from the user's `entitlements` row in Supabase.
+- **Pro / Studio tiers**: no watermark; tier comes from a Supabase `entitlements` row.
 
-**Rust is the source of truth for tier.** It verifies the access-token JWT against
-Supabase's public JWKS (asymmetric keys — no secret in the binary), then reads the
-`entitlements` row over PostgREST with the bearer token (Row-Level Security returns
-only the caller's row). Session + entitlement are cached to `session.json` /
-`entitlement.json`. Offline use is allowed for **14 days** from the last successful
-verification; after that the app falls back to Free.
+**Rust is the source of truth for tier, and the tier is never trusted off local
+disk.** It is delivered as a **server-signed, device-bound entitlement token**
+(EdDSA / JWS). After sign-in the frontend hands the session to Rust via
+`establish_session`; Rust verifies the access-token JWT against Supabase's public
+JWKS (asymmetric keys — no secret in the binary), then calls the `issue-entitlement`
+Edge Function to register this device (a `machine-uid` hash) and mint the token. The
+token is verified **offline** against the `ENTITLEMENT_PUBLIC_KEY` baked in at build
+time before its tier is honored — editing or copying the cache to another machine
+yields Free. Caches: `session.json` (refresh token) + `entitlement.token` (signed
+token). Offline use is allowed for **14 days** measured from the token's `iat` (last
+successful online verification); after that the app falls back to Free.
+
+**Device seats**: each active device occupies a seat (Pro 2, Studio 5). At the limit,
+`issue-entitlement` returns `device_limit_reached` + the device list; the UI opens
+`DeviceManagerDialog`, the user disconnects a device (`disconnect-device` Edge
+Function), and provisioning retries.
 
 OAuth uses PKCE and returns through the custom deep link `orenew://auth-callback`
 (`tauri-plugin-deep-link`). Google/Meta only ever see Supabase's HTTPS callback,
 never the custom scheme.
 
-A background refresh runs at startup (retries every 60 s if offline): refresh
-token → verify → re-fetch entitlement → emit `tier-changed`; if the grace window
-lapses it clears the caches and emits `license-expired`.
+`auth_refresh_loop` runs at startup, online-first (retries every 60 s if offline):
+refresh access token → JWKS-verify → re-mint + verify the entitlement token
+(renewing the 14-day grace) → emit `tier-changed`. When offline it falls back to the
+cached token; if the grace lapses it clears the caches and emits `license-expired`;
+if this device lost its seat it emits `device-limit` and drops to Free.
 
 See [`docs/supabase.md`](docs/supabase.md) for project setup and the SQL migration.
 
@@ -266,3 +315,25 @@ npm run tauri build
 ```
 
 Installers are written to `src-tauri/target/release/bundle/`. The release profile uses `opt-level 3`, `lto = "thin"`, `codegen-units = 1`, `panic = "abort"`, and `strip = true`.
+
+> **Release builds are guarded.** `build.rs` aborts a `release` build if
+> `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `ENTITLEMENT_PUBLIC_KEY` are still at
+> their placeholder values — so an installer with dead sign-in can't ship by
+> accident. Debug/dev builds stay lenient.
+
+### Updates & signing
+
+Orenew ships with `tauri-plugin-updater`; the app does a best-effort signed update
+check on startup (`src/hooks/useUpdater.ts`). To enable it for a real release:
+
+1. Generate a signing keypair: `npm run tauri signer generate -- -w ~/.orenew/updater.key`
+2. Put the **public** key in `tauri.conf.json` → `plugins.updater.pubkey`, and set
+   `plugins.updater.endpoints` to your hosted update-manifest URL.
+3. At build time, provide the **private** key via the `TAURI_SIGNING_PRIVATE_KEY`
+   (and password) env vars — never commit it. `bundle.createUpdaterArtifacts` is on,
+   so `tauri build` emits the signed update artifacts + `latest.json` to publish.
+
+Until a real endpoint + pubkey are configured the startup check fails silently
+(no-op). Installers are currently **unsigned for code-signing purposes** — Windows
+SmartScreen / macOS Gatekeeper will warn on first run until you add OS code-signing
+certificates (separate from the updater key).
