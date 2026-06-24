@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 
 const THUMB_SIZE: u32 = 256;
 
@@ -38,7 +38,11 @@ impl ThumbnailCache {
         self.cache_dir.join(format!("{}.jpg", key))
     }
 
-    pub fn get_or_generate(&self, photo_path: &Path, content_hash: Option<&str>) -> Result<Vec<u8>> {
+    pub fn get_or_generate(
+        &self,
+        photo_path: &Path,
+        content_hash: Option<&str>,
+    ) -> Result<Vec<u8>> {
         let key = Self::cache_key(photo_path, content_hash);
         let path = self.thumb_path(&key);
         if path.exists() {
@@ -54,10 +58,12 @@ impl ThumbnailCache {
         let thumb = img.thumbnail(THUMB_SIZE, THUMB_SIZE);
         let mut buf = Vec::new();
         thumb
-            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)
+            .write_to(
+                &mut std::io::Cursor::new(&mut buf),
+                image::ImageFormat::Jpeg,
+            )
             .context("encoding thumbnail")?;
         std::fs::write(out_path, &buf).context("saving thumbnail")?;
         Ok(buf)
     }
-
 }

@@ -1,8 +1,8 @@
-use tauri::State;
-use uuid::Uuid;
 use crate::commands::IntoTauri;
 use crate::project::model::Orientation;
 use crate::AppState;
+use tauri::State;
+use uuid::Uuid;
 
 #[tauri::command]
 pub async fn get_thumbnail(
@@ -11,7 +11,10 @@ pub async fn get_thumbnail(
     state: State<'_, AppState>,
 ) -> Result<Vec<u8>, String> {
     let path = std::path::PathBuf::from(&photo_path);
-    state.thumbs.get_or_generate(&path, content_hash.as_deref()).tauri()
+    state
+        .thumbs
+        .get_or_generate(&path, content_hash.as_deref())
+        .tauri()
 }
 
 /// Small PNG preview of a frame file (landscape/portrait), alpha preserved so the
@@ -53,9 +56,12 @@ pub async fn get_framed_preview(
         Some(pid) => Some(event.find_frame_preset(pid)?),
         None => None,
     };
-    let bytes = crate::preview::framed_preview::generate_framed_preview(photo, preset)
-        .tauri()?;
-    state.preview_cache.lock().unwrap().insert(cache_key, bytes.clone());
+    let bytes = crate::preview::framed_preview::generate_framed_preview(photo, preset).tauri()?;
+    state
+        .preview_cache
+        .lock()
+        .unwrap()
+        .insert(cache_key, bytes.clone());
     Ok(bytes)
 }
 

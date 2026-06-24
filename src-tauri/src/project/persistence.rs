@@ -1,10 +1,10 @@
+use crate::json_store::{load_json, save_json};
+use crate::project::model::Event;
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use anyhow::Result;
 use uuid::Uuid;
-use crate::json_store::{load_json, save_json};
-use crate::project::model::Event;
 
 /// Manages reading/writing event state in `{app_data}/events/`.
 /// Constructed once at app startup from `app.path().app_data_dir()` and held in Tauri state.
@@ -12,7 +12,7 @@ use crate::project::model::Event;
 /// The in-memory `cache` is the source of truth. `save` updates the cache and
 /// marks the event dirty; the actual disk write is **coalesced** — a background
 /// task flushes dirty events on a short interval, and the window-close hook
-/// flushes synchronously. This avoids rewriting the whole multi-MB `magnet.json`
+/// flushes synchronously. This avoids rewriting the whole multi-MB `orenew.json`
 /// on every single mutation (each mutation becomes an in-memory map insert).
 ///
 /// ponytail: JSON + coalesced writes is enough for one user / a few thousand
@@ -145,7 +145,7 @@ mod tests {
     use crate::project::model::Event;
 
     fn tmp_store() -> (EventStore, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("magnet_test_{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("orenew_test_{}", Uuid::new_v4()));
         (EventStore::new(dir.clone()).unwrap(), dir)
     }
 

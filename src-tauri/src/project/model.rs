@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,13 +138,11 @@ fn default_copies() -> u32 {
 impl Photo {
     pub fn effective_orientation(&self) -> Orientation {
         self.orientation_override
-            .unwrap_or(
-                if self.width >= self.height {
-                    Orientation::Landscape
-                } else {
-                    Orientation::Portrait
-                }
-            )
+            .unwrap_or(if self.width >= self.height {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            })
     }
 }
 
@@ -234,17 +232,26 @@ mod tests {
 
     #[test]
     fn orientation_from_pixels_landscape() {
-        assert_eq!(photo(200, 100).effective_orientation(), Orientation::Landscape);
+        assert_eq!(
+            photo(200, 100).effective_orientation(),
+            Orientation::Landscape
+        );
     }
 
     #[test]
     fn orientation_from_pixels_portrait() {
-        assert_eq!(photo(100, 200).effective_orientation(), Orientation::Portrait);
+        assert_eq!(
+            photo(100, 200).effective_orientation(),
+            Orientation::Portrait
+        );
     }
 
     #[test]
     fn square_is_landscape() {
-        assert_eq!(photo(100, 100).effective_orientation(), Orientation::Landscape);
+        assert_eq!(
+            photo(100, 100).effective_orientation(),
+            Orientation::Landscape
+        );
     }
 
     #[test]

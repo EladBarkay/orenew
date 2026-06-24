@@ -87,7 +87,11 @@ mod tests {
         // Grace lapsed (no successful online re-verification in 14 days) → Free.
         e.last_verified = Utc::now() - Duration::days(15);
         e.expires_at = None;
-        assert_eq!(e.effective_tier(), Tier::Free, "lapsed grace downgrades to Free");
+        assert_eq!(
+            e.effective_tier(),
+            Tier::Free,
+            "lapsed grace downgrades to Free"
+        );
     }
 
     #[test]

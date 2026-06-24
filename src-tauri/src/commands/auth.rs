@@ -47,7 +47,10 @@ pub async fn establish_session(
     let session_path = state.app_data_dir.join("session.json");
     crate::json_store::save_json(&session_path, &session).tauri()?;
 
-    match provision::provision(&state.app_data_dir, &access_token).await.tauri()? {
+    match provision::provision(&state.app_data_dir, &access_token)
+        .await
+        .tauri()?
+    {
         Provisioned::Active(mut entitlement) => {
             entitlement.email = entitlement.email.or(claims.email);
             set_auth(&state, session, entitlement.clone());
@@ -71,12 +74,19 @@ pub async fn disconnect_device(
     state: State<'_, AppState>,
 ) -> Result<AuthResult, String> {
     let existing = current_auth(&state);
-    let Some(existing) = existing else { return Err("not signed in".into()) };
+    let Some(existing) = existing else {
+        return Err("not signed in".into());
+    };
     let access_token = existing.session.access_token.clone();
 
-    client::disconnect_device(&access_token, &device_hash).await.tauri()?;
+    client::disconnect_device(&access_token, &device_hash)
+        .await
+        .tauri()?;
 
-    match provision::provision(&state.app_data_dir, &access_token).await.tauri()? {
+    match provision::provision(&state.app_data_dir, &access_token)
+        .await
+        .tauri()?
+    {
         Provisioned::Active(entitlement) => {
             set_auth(&state, existing.session, entitlement.clone());
             let _ = app.emit(crate::constants::events::TIER_CHANGED, ());
@@ -92,8 +102,12 @@ pub async fn disconnect_device(
 /// "manage devices" view. `None` => signed out.
 #[tauri::command]
 pub async fn list_devices(state: State<'_, AppState>) -> Result<Option<Vec<DeviceInfo>>, String> {
-    let Some(existing) = current_auth(&state) else { return Ok(None) };
-    let devices = client::list_devices(&existing.session.access_token).await.tauri()?;
+    let Some(existing) = current_auth(&state) else {
+        return Ok(None);
+    };
+    let devices = client::list_devices(&existing.session.access_token)
+        .await
+        .tauri()?;
     Ok(Some(devices))
 }
 
@@ -119,13 +133,20 @@ pub async fn refresh_entitlement(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<AuthResult>, String> {
-    let Some(existing) = current_auth(&state) else { return Ok(None) };
+    let Some(existing) = current_auth(&state) else {
+        return Ok(None);
+    };
 
-    let session = client::refresh(&existing.session.refresh_token).await.tauri()?;
+    let session = client::refresh(&existing.session.refresh_token)
+        .await
+        .tauri()?;
     jwt::verify(&session.access_token).await.tauri()?;
     crate::json_store::save_json(&state.app_data_dir.join("session.json"), &session).tauri()?;
 
-    match provision::provision(&state.app_data_dir, &session.access_token).await.tauri()? {
+    match provision::provision(&state.app_data_dir, &session.access_token)
+        .await
+        .tauri()?
+    {
         Provisioned::Active(entitlement) => {
             set_auth(&state, session, entitlement.clone());
             let _ = app.emit(crate::constants::events::TIER_CHANGED, ());
@@ -148,7 +169,8 @@ pub async fn refresh_entitlement(
 pub async fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
     if let Some(existing) = current_auth(&state) {
         // Best-effort: free this device's seat. Ignore failures (offline sign-out).
-        let _ = client::disconnect_device(&existing.session.access_token, &device::device_hash()).await;
+        let _ =
+            client::disconnect_device(&existing.session.access_token, &device::device_hash()).await;
     }
 
     let _ = std::fs::remove_file(state.app_data_dir.join("session.json"));
@@ -168,6 +190,9 @@ fn current_auth(state: &State<'_, AppState>) -> Option<AuthState> {
 
 fn set_auth(state: &State<'_, AppState>, session: Session, entitlement: Entitlement) {
     if let Ok(mut guard) = state.auth.lock() {
-        *guard = Some(AuthState { session, entitlement });
+        *guard = Some(AuthState {
+            session,
+            entitlement,
+        });
     }
 }

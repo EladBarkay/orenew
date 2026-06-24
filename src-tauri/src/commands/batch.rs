@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use rayon::prelude::*;
-use tauri::{Emitter, State};
-use uuid::Uuid;
-use serde::Serialize;
 use crate::commands::IntoTauri;
 use crate::photo::batch::{prepare_frames, PreparedFrames};
 use crate::project::model::{CanvasPreset, Event, FramePreset, Photo};
 use crate::AppState;
+use rayon::prelude::*;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use tauri::{Emitter, State};
+use uuid::Uuid;
 
 #[derive(Serialize, Clone)]
 struct SaveProgress {
@@ -22,6 +22,16 @@ struct SaveComplete {
     output_dir: String,
 }
 
+/// Result of a print run. `dialog_opened` is true only where we can launch a real
+/// OS print dialog (Windows); elsewhere the canvases are written to `output_dir`
+/// and the frontend offers to open that folder so the user prints manually.
+#[derive(Serialize, Clone)]
+pub struct PrintResult {
+    count: usize,
+    dialog_opened: bool,
+    output_dir: String,
+}
+
 /// Open both frame PNGs and pre-resize/convert them for a given slot — done once
 /// per save/print run so the per-photo hot path does no frame I/O or conversion.
 fn load_and_prepare_frames(
@@ -33,7 +43,13 @@ fn load_and_prepare_frames(
         .map_err(|e| format!("loading landscape frame: {e}"))?;
     let portrait_src = image::open(&preset.portrait_frame_path)
         .map_err(|e| format!("loading portrait frame: {e}"))?;
-    Ok(prepare_frames(preset, slot_w, slot_h, &landscape_src, &portrait_src))
+    Ok(prepare_frames(
+        preset,
+        slot_w,
+        slot_h,
+        &landscape_src,
+        &portrait_src,
+    ))
 }
 
 /// Run `f` on a dedicated 4-thread rayon pool so peak memory stays ~4 decoded
@@ -62,7 +78,8 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
 /// for the given quantity map. Keys of `quantities` determine which photos are included.
 fn collect_selected(event: &Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
     event
-        .batches.iter()
+        .batches
+        .iter()
         .flat_map(|b| &b.photos)
         .filter(|p| quantities.contains_key(&p.id))
         .cloned()
@@ -106,11 +123,23 @@ fn prepare_batch(
     let slot_h = canvas_preset.slot_height();
     let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
 
-    Ok(PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h })
+    Ok(PreparedBatch {
+        photos,
+        canvas_preset,
+        frame_preset,
+        frames,
+        watermark,
+        slot_w,
+        slot_h,
+    })
 }
 
 /// Add each photo's queued quantity to one of its counters (`field` selects which).
-fn bump_counts(event: &mut Event, quantities: &HashMap<Uuid, u32>, field: fn(&mut Photo) -> &mut u32) {
+fn bump_counts(
+    event: &mut Event,
+    quantities: &HashMap<Uuid, u32>,
+    field: fn(&mut Photo) -> &mut u32,
+) {
     for batch in &mut event.batches {
         for photo in &mut batch.photos {
             if let Some(&qty) = quantities.get(&photo.id) {
@@ -131,11 +160,26 @@ pub async fn save_batch(
 ) -> Result<(), String> {
     let event = state.store.load(event_id).tauri()?;
 
-    let PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h } =
-        prepare_batch(&event, &quantities, frame_preset_id, canvas_preset_id, 0, state.watermark())?;
+    let PreparedBatch {
+        photos,
+        canvas_preset,
+        frame_preset,
+        frames,
+        watermark,
+        slot_w,
+        slot_h,
+    } = prepare_batch(
+        &event,
+        &quantities,
+        frame_preset_id,
+        canvas_preset_id,
+        0,
+        state.watermark(),
+    )?;
 
     let output_root = event
-        .output_folder.as_ref()
+        .output_folder
+        .as_ref()
         .ok_or("no output folder configured — set one in event settings")?
         .clone();
 
@@ -149,7 +193,11 @@ pub async fn save_batch(
     // Background thread — does not block the IPC handler
     std::thread::spawn(move || {
         let chunk_size = (canvas_preset.photos_per_canvas as usize).max(1);
-        let total_canvases = if photos.is_empty() { 0 } else { photos.len().div_ceil(chunk_size) };
+        let total_canvases = if photos.is_empty() {
+            0
+        } else {
+            photos.len().div_ceil(chunk_size)
+        };
         let done = std::sync::atomic::AtomicUsize::new(0);
 
         let process_chunk = |(canvas_idx, chunk): (usize, &[Photo])| -> Vec<String> {
@@ -158,7 +206,11 @@ pub async fn save_batch(
                 .iter()
                 .filter_map(|photo| {
                     crate::photo::batch::frame_photo_for_canvas(
-                        photo, &frame_preset, slot_w, slot_h, &frames,
+                        photo,
+                        &frame_preset,
+                        slot_w,
+                        slot_h,
+                        &frames,
                     )
                     .map_err(|e| {
                         log::warn!("framing {}: {e}", photo.path.display());
@@ -170,10 +222,12 @@ pub async fn save_batch(
 
             let filename = format!("canvas_{:04}.jpg", canvas_idx + 1);
             if framed.is_empty() {
-                errs.push(format!("canvas {}: all photos failed to frame", canvas_idx + 1));
+                errs.push(format!(
+                    "canvas {}: all photos failed to frame",
+                    canvas_idx + 1
+                ));
             } else {
-                let mut canvas =
-                    crate::canvas::compositor::compose_one(&framed, &canvas_preset);
+                let mut canvas = crate::canvas::compositor::compose_one(&framed, &canvas_preset);
                 if watermark {
                     canvas = crate::canvas::compositor::apply_watermark(&canvas);
                 }
@@ -184,11 +238,14 @@ pub async fn save_batch(
             }
 
             let d = done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let _ = app.emit(crate::constants::events::SAVE_PROGRESS, SaveProgress {
-                done: d,
-                total: total_canvases,
-                current_file: filename,
-            });
+            let _ = app.emit(
+                crate::constants::events::SAVE_PROGRESS,
+                SaveProgress {
+                    done: d,
+                    total: total_canvases,
+                    current_file: filename,
+                },
+            );
             errs
         };
 
@@ -209,10 +266,13 @@ pub async fn save_batch(
             let _ = store.flush_one(event_id);
         }
 
-        let _ = app.emit(crate::constants::events::SAVE_COMPLETE, SaveComplete {
-            errors,
-            output_dir: output_dir_clone.to_string_lossy().into_owned(),
-        });
+        let _ = app.emit(
+            crate::constants::events::SAVE_COMPLETE,
+            SaveComplete {
+                errors,
+                output_dir: output_dir_clone.to_string_lossy().into_owned(),
+            },
+        );
     });
 
     Ok(())
@@ -225,25 +285,50 @@ pub async fn print_photos(
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     state: State<'_, AppState>,
-) -> Result<usize, String> {
+) -> Result<PrintResult, String> {
     let mut event = state.store.load(event_id).tauri()?;
-    let PreparedBatch { photos, canvas_preset, frame_preset, frames, watermark, slot_w, slot_h } =
-        prepare_batch(&event, &quantities, frame_preset_id, canvas_preset_id, 1, state.watermark())?;
+    let PreparedBatch {
+        photos,
+        canvas_preset,
+        frame_preset,
+        frames,
+        watermark,
+        slot_w,
+        slot_h,
+    } = prepare_batch(
+        &event,
+        &quantities,
+        frame_preset_id,
+        canvas_preset_id,
+        1,
+        state.watermark(),
+    )?;
 
     let framed: Vec<_> = run_bounded(|| {
         photos
             .par_iter()
             .filter_map(|p| {
                 crate::photo::batch::frame_photo_for_canvas(
-                    p, &frame_preset, slot_w, slot_h, &frames,
-                ).ok()
+                    p,
+                    &frame_preset,
+                    slot_w,
+                    slot_h,
+                    &frames,
+                )
+                .ok()
             })
             .collect()
     });
 
     let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)
         .into_iter()
-        .map(|c| if watermark { crate::canvas::compositor::apply_watermark(&c) } else { c })
+        .map(|c| {
+            if watermark {
+                crate::canvas::compositor::apply_watermark(&c)
+            } else {
+                c
+            }
+        })
         .collect();
 
     let tmp_dir = std::env::temp_dir().join("orenew_print");
@@ -256,10 +341,31 @@ pub async fn print_photos(
         paths.push(p);
     }
 
+    // Windows: launch the native print dialog (Photos print wizard) per canvas.
+    // The filenames are app-generated (`print_NNNN.jpg`), so the single-quoted
+    // PowerShell argument needs no further escaping.
+    #[cfg(windows)]
+    for p in &paths {
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])
+            .arg(format!(
+                "Start-Process -FilePath '{}' -Verb Print",
+                p.display()
+            ))
+            .spawn();
+    }
+
     bump_counts(&mut event, &quantities, |p| &mut p.print_count);
     state.store.save(&event).tauri()?;
     // Flush immediately — billing-relevant counts must survive a crash.
+    // ponytail: print_count is optimistic — we can't detect the user cancelling
+    // the OS print dialog. Accurate counts would need per-platform spooler
+    // polling; add that only if customers dispute print billing.
     state.store.flush_one(event_id).tauri()?;
 
-    Ok(paths.len())
+    Ok(PrintResult {
+        count: paths.len(),
+        dialog_opened: cfg!(windows),
+        output_dir: tmp_dir.to_string_lossy().into_owned(),
+    })
 }

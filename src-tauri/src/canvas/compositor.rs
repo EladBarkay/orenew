@@ -1,6 +1,6 @@
-use std::borrow::Cow;
-use image::{DynamicImage, Rgb, RgbImage};
 use crate::project::model::CanvasPreset;
+use image::{DynamicImage, Rgb, RgbImage};
+use std::borrow::Cow;
 
 /// Tile framed images onto a blank canvas according to a `CanvasPreset`.
 /// `framed_images` must have exactly `preset.photos_per_canvas` entries.
@@ -37,7 +37,10 @@ pub fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicIma
         // Framed images arrive pre-fitted to the slot — center them with white
         // letterboxing, never stretch. Contain-fit only if somehow oversized.
         let rgb: Cow<RgbImage> = if img.width() > slot_w || img.height() > slot_h {
-            Cow::Owned(img.resize(slot_w, slot_h, image::imageops::FilterType::Triangle).to_rgb8())
+            Cow::Owned(
+                img.resize(slot_w, slot_h, image::imageops::FilterType::Triangle)
+                    .to_rgb8(),
+            )
         } else {
             match img.as_rgb8() {
                 Some(b) => Cow::Borrowed(b),
@@ -72,9 +75,8 @@ pub fn apply_watermark(canvas: &DynamicImage) -> DynamicImage {
                 let px = output.get_pixel_mut(x, y);
                 let [r, g, b] = px.0;
                 // Blend toward white by `alpha`.
-                let blend = |c: u8| -> u8 {
-                    ((c as u32 * (255 - alpha) + 255 * alpha) / 255) as u8
-                };
+                let blend =
+                    |c: u8| -> u8 { ((c as u32 * (255 - alpha) + 255 * alpha) / 255) as u8 };
                 *px = Rgb([blend(r), blend(g), blend(b)]);
             }
         }
@@ -128,8 +130,8 @@ mod tests {
     #[test]
     fn exact_slot_size_image_fills_slot_without_resampling() {
         let preset = two_up_preset();
-        let canvas = compose_one(&[solid(120, 160, GREEN), solid(120, 160, GREEN)], &preset)
-            .to_rgba8();
+        let canvas =
+            compose_one(&[solid(120, 160, GREEN), solid(120, 160, GREEN)], &preset).to_rgba8();
         // Both slots fully covered, corner-to-corner.
         assert_eq!(canvas.get_pixel(0, 0), &GREEN);
         assert_eq!(canvas.get_pixel(119, 159), &GREEN);

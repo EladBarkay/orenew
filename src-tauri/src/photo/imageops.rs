@@ -4,8 +4,8 @@
 //! fallback in one body, so swapping the fast path for the slow-but-simple one
 //! is a single-spot edit (delete the fast branch, keep the fallback).
 
-use image::{imageops, DynamicImage, RgbaImage};
 use crate::project::model::CropRect;
+use image::{imageops, DynamicImage, RgbaImage};
 
 /// Crop `img` to `rect` and downscale to `(w, h)`.
 ///
@@ -38,7 +38,12 @@ pub fn overlay_frame(base: &DynamicImage, frame: &RgbaImage) -> DynamicImage {
     if out.dimensions() == frame.dimensions() {
         imageops::overlay(&mut out, frame, 0, 0);
     } else {
-        let resized = imageops::resize(frame, out.width(), out.height(), imageops::FilterType::Triangle);
+        let resized = imageops::resize(
+            frame,
+            out.width(),
+            out.height(),
+            imageops::FilterType::Triangle,
+        );
         imageops::overlay(&mut out, &resized, 0, 0);
     }
     DynamicImage::ImageRgba8(out)
@@ -50,9 +55,24 @@ fn fast_crop_resize(img: &DynamicImage, rect: CropRect, w: u32, h: u32) -> Optio
     use fast_image_resize as fir;
 
     let (pixel_type, bytes, src_w, src_h) = match img {
-        DynamicImage::ImageRgb8(b) => (fir::PixelType::U8x3, b.as_raw().as_slice(), b.width(), b.height()),
-        DynamicImage::ImageRgba8(b) => (fir::PixelType::U8x4, b.as_raw().as_slice(), b.width(), b.height()),
-        DynamicImage::ImageLuma8(b) => (fir::PixelType::U8, b.as_raw().as_slice(), b.width(), b.height()),
+        DynamicImage::ImageRgb8(b) => (
+            fir::PixelType::U8x3,
+            b.as_raw().as_slice(),
+            b.width(),
+            b.height(),
+        ),
+        DynamicImage::ImageRgba8(b) => (
+            fir::PixelType::U8x4,
+            b.as_raw().as_slice(),
+            b.width(),
+            b.height(),
+        ),
+        DynamicImage::ImageLuma8(b) => (
+            fir::PixelType::U8,
+            b.as_raw().as_slice(),
+            b.width(),
+            b.height(),
+        ),
         _ => return None,
     };
 
@@ -60,13 +80,22 @@ fn fast_crop_resize(img: &DynamicImage, rect: CropRect, w: u32, h: u32) -> Optio
     let mut dst = fir::images::Image::new(w, h, pixel_type);
     let mut resizer = fir::Resizer::new();
     let opts = fir::ResizeOptions::new()
-        .crop(rect.x as f64, rect.y as f64, rect.width as f64, rect.height as f64)
+        .crop(
+            rect.x as f64,
+            rect.y as f64,
+            rect.width as f64,
+            rect.height as f64,
+        )
         .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::Bilinear));
     resizer.resize(&src, &mut dst, &Some(opts)).ok()?;
 
     match pixel_type {
-        fir::PixelType::U8x3 => image::RgbImage::from_raw(w, h, dst.into_vec()).map(DynamicImage::ImageRgb8),
-        fir::PixelType::U8x4 => image::RgbaImage::from_raw(w, h, dst.into_vec()).map(DynamicImage::ImageRgba8),
+        fir::PixelType::U8x3 => {
+            image::RgbImage::from_raw(w, h, dst.into_vec()).map(DynamicImage::ImageRgb8)
+        }
+        fir::PixelType::U8x4 => {
+            image::RgbaImage::from_raw(w, h, dst.into_vec()).map(DynamicImage::ImageRgba8)
+        }
         _ => image::GrayImage::from_raw(w, h, dst.into_vec()).map(DynamicImage::ImageLuma8),
     }
 }
@@ -102,7 +131,12 @@ mod tests {
     #[test]
     fn crop_and_resize_produces_target_dims() {
         let img = DynamicImage::ImageRgb8(image::RgbImage::new(200, 100));
-        let rect = CropRect { x: 50, y: 0, width: 100, height: 100 };
+        let rect = CropRect {
+            x: 50,
+            y: 0,
+            width: 100,
+            height: 100,
+        };
         let out = crop_and_resize(&img, rect, 64, 64);
         assert_eq!((out.width(), out.height()), (64, 64));
     }
@@ -126,11 +160,16 @@ mod tests {
     #[test]
     fn rgb8_fast_path_blends_semi_transparent() {
         // 50% white over black → mid gray. Exercises the in-place RGB8 branch.
-        let base = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(4, 4, image::Rgb([0, 0, 0])));
+        let base =
+            DynamicImage::ImageRgb8(image::RgbImage::from_pixel(4, 4, image::Rgb([0, 0, 0])));
         let frame = RgbaImage::from_pixel(4, 4, Rgba([255, 255, 255, 128]));
         let out = overlay_frame(&base, &frame);
         let px = out.to_rgb8().get_pixel(2, 2).0;
-        assert!((px[0] as i32 - 128).abs() <= 1, "expected ~128, got {}", px[0]);
+        assert!(
+            (px[0] as i32 - 128).abs() <= 1,
+            "expected ~128, got {}",
+            px[0]
+        );
     }
 
     #[test]

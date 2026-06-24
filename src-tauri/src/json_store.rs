@@ -7,8 +7,8 @@ use std::path::Path;
 
 /// Read and deserialize a JSON file.
 pub fn load_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let data = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let data =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     serde_json::from_str(&data).with_context(|| format!("deserializing {}", path.display()))
 }
 

@@ -108,11 +108,14 @@ orenew/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs            # thin entry → orenew_lib::run()
-│   │   ├── lib.rs             # AppState, Tauri builder, invoke_handler, license load
+│   │   ├── lib.rs             # AppState, Tauri builder, invoke_handler, auth refresh loop, updater plugin
+│   │   ├── constants.rs       # Tauri event channel names (fs-changed, save-progress, face-scan-progress, …)
+│   │   ├── json_store.rs      # atomic JSON load/save (tmp-then-rename) for session/entitlement caches
 │   │   ├── commands/          # Thin Tauri IPC handlers
-│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches, open_in_explorer
-│   │   │   ├── gallery.rs     # list_photos, get_thumbnail, get_framed_preview, overrides (preview IPC lives here)
-│   │   │   ├── batch.rs       # save_batch, print_photos (watermark per tier)
+│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches
+│   │   │   ├── gallery.rs     # get_thumbnail, get_frame_thumbnail, get_framed_preview, overrides (preview IPC lives here)
+│   │   │   ├── batch.rs       # save_batch, print_photos (Windows print dialog / folder fallback; watermark per tier)
+│   │   │   ├── faces.rs       # count_faces_in_batch — rustface (SeetaFace2), embedded model [tests]
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
 │   │   │   └── auth.rs        # establish_session, get_entitlement, refresh_entitlement, disconnect_device, list_devices, current_device_hash, sign_out
@@ -140,14 +143,15 @@ orenew/
 │   │   ├── Lightbox.tsx       # full-screen framed preview + prev/next + orientation/frame/copies/counts
 │   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pick + manage (add/edit/delete), sticky defaults
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
-│   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used inside ExportDialog manage)
-│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, manage devices, sign out
+│   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used inside ExportDialog + EventConfigDialog)
+│   │   ├── EventConfigDialog.tsx   # event-level frame + canvas preset management (add/edit/delete)
+│   │   ├── SettingsDialog.tsx      # Supabase sign-in (email/password + Google/Facebook), tier display, manage devices, language, sign out
 │   │   ├── DeviceManagerDialog.tsx # device-seat picker (seat-limit interrupt + manage), disconnect devices
 │   │   ├── EmptyState.tsx          # empty gallery placeholder
 │   │   ├── icons.tsx               # SVG icon components
 │   │   └── ui.tsx                  # shared Modal and primitive UI components
-│   ├── hooks/                 # useThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useSaveProgress.ts, useAuthDeepLink.ts
-│   ├── lib/                   # supabase.ts (client), auth.ts (establishFromSession → Rust)
+│   ├── hooks/                 # useThumbnail.ts, useFrameThumbnail.ts, useFramedPreview.ts, useFsWatcher.ts, useSaveProgress.ts, useAuthDeepLink.ts, useUpdater.ts, useAsyncForm.ts
+│   ├── lib/                   # supabase.ts (client), auth.ts (session+device IPC), paths.ts, selection.ts, reorder.ts, tiers.ts
 │   ├── i18n.ts                # i18next setup (en + he), LANGS, setLanguage(), syncs <html lang/dir>
 │   └── locales/              # en.ts (source-of-truth dictionary) + he.ts (Hebrew, RTL)
 └── package.json
@@ -160,8 +164,24 @@ All quantities live in `App.photoQueue: Record<string, number>` — a unified se
 both print and save. The toolbar **Export** button opens `ExportDialog` to pick a frame
 preset + canvas preset and a destination (Print or Save to path), then calls `print_photos` or
 `save_batch`. After completion, `print_count` / `save_count` on each Photo is bumped optimistically
-and the queue is cleared. Actual printer
-submission is deferred — files go to a temp dir, OS printer dialog is not yet wired.
+and the queue is cleared.
+
+**Print** composes canvases, writes them to a temp dir, then dispatches by platform:
+on **Windows** it launches the native print dialog per canvas
+(`Start-Process -Verb Print`); on **macOS/Linux** (no reliable CLI print dialog) it
+returns the folder and the UI offers an "Open folder" button to print manually.
+`print_photos` returns `{ count, dialog_opened, output_dir }` so the UI message is
+honest. `print_count` is optimistic — OS-dialog cancellation isn't detectable.
+
+### Face detection (current)
+
+A "Suggest copies" action in `ActionBar` (bulk-selection mode) seeds per-photo export
+quantities from detected face counts. `count_faces_in_batch` (`commands/faces.rs`) uses
+the `rustface` crate (SeetaFace2) with the frontal model embedded via `include_bytes!`
+(`src-tauri/model/seeta_fd_frontal_v1.0.bin`). Each photo is downscaled to a 1024px
+longest side; the scan runs on the bounded rayon pool (one detector per worker) and
+emits `face-scan-progress`. The frontend (`App.tsx` `scanFaces`) merges positive counts
+into `photoQueue`; the suggestion stays editable.
 
 ### Auth & Entitlements (current)
 

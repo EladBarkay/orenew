@@ -14,8 +14,8 @@ fn main() {
     let url = std::env::var("SUPABASE_URL")
         .unwrap_or_else(|_| "https://YOUR_PROJECT_REF.supabase.co".to_string());
     println!("cargo:rustc-env=SUPABASE_URL={url}");
-    let anon_key = std::env::var("SUPABASE_ANON_KEY")
-        .unwrap_or_else(|_| "YOUR_SUPABASE_ANON_KEY".to_string());
+    let anon_key =
+        std::env::var("SUPABASE_ANON_KEY").unwrap_or_else(|_| "YOUR_SUPABASE_ANON_KEY".to_string());
     println!("cargo:rustc-env=SUPABASE_ANON_KEY={anon_key}");
 
     // Ed25519 public key (SPKI PEM) used to verify the server-signed entitlement
@@ -28,10 +28,34 @@ fn main() {
     // escaped to the two-char sequence `\n`; the runtime verifier decodes them
     // back before parsing the key.
     let ent_key = std::env::var("ENTITLEMENT_PUBLIC_KEY")
-        .unwrap_or_else(|_| "-----BEGIN PUBLIC KEY-----\nUNCONFIGURED\n-----END PUBLIC KEY-----".to_string())
+        .unwrap_or_else(|_| {
+            "-----BEGIN PUBLIC KEY-----\nUNCONFIGURED\n-----END PUBLIC KEY-----".to_string()
+        })
         .replace('\r', "")
         .replace('\n', "\\n");
     println!("cargo:rustc-env=ENTITLEMENT_PUBLIC_KEY={ent_key}");
+
+    // Refuse to ship a release build with placeholder credentials — that would
+    // produce an installer where sign-in is dead and everyone silently lands on
+    // Free. Debug/dev builds stay lenient so local work without Supabase compiles.
+    if std::env::var("PROFILE").as_deref() == Ok("release") {
+        let unset: Vec<&str> = [
+            ("SUPABASE_URL", url.contains("YOUR_PROJECT_REF")),
+            ("SUPABASE_ANON_KEY", anon_key == "YOUR_SUPABASE_ANON_KEY"),
+            ("ENTITLEMENT_PUBLIC_KEY", ent_key.contains("UNCONFIGURED")),
+        ]
+        .into_iter()
+        .filter(|(_, is_placeholder)| *is_placeholder)
+        .map(|(name, _)| name)
+        .collect();
+        if !unset.is_empty() {
+            panic!(
+                "release build aborted: {} still at placeholder value(s). \
+                 Set them via the repo-root .env or real env vars before `tauri build`.",
+                unset.join(", ")
+            );
+        }
+    }
 
     println!("cargo:rerun-if-env-changed=SUPABASE_URL");
     println!("cargo:rerun-if-env-changed=SUPABASE_ANON_KEY");

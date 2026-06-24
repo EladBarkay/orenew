@@ -1,6 +1,6 @@
-pub mod loader;
-pub mod crop;
-pub mod imageops;
-pub mod frame;
-pub mod encode;
 pub mod batch;
+pub mod crop;
+pub mod encode;
+pub mod frame;
+pub mod imageops;
+pub mod loader;

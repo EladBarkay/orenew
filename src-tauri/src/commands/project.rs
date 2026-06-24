@@ -1,10 +1,10 @@
+use crate::commands::IntoTauri;
+use crate::project::model::{Event, Photo, PhotoBatch};
+use crate::AppState;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
 use uuid::Uuid;
-use crate::commands::IntoTauri;
-use crate::project::model::{Event, Photo, PhotoBatch};
-use crate::AppState;
 
 #[tauri::command]
 pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Event, String> {
@@ -189,10 +189,8 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
 /// the ids of photos whose content hash changed (callers invalidate their
 /// cached previews).
 fn merge_photos(existing: Vec<Photo>, scanned: Vec<Photo>) -> (Vec<Photo>, Vec<Uuid>) {
-    let mut existing_map: HashMap<PathBuf, Photo> = existing
-        .into_iter()
-        .map(|p| (p.path.clone(), p))
-        .collect();
+    let mut existing_map: HashMap<PathBuf, Photo> =
+        existing.into_iter().map(|p| (p.path.clone(), p)).collect();
 
     let mut changed_ids = Vec::new();
     let photos = scanned
@@ -256,7 +254,10 @@ mod tests {
         let scanned = vec![photo("/a.jpg", "h2")]; // same path, new hash + new uuid
         let (merged, changed) = merge_photos(vec![old], scanned);
         assert_eq!(merged[0].id, id, "id must follow the path, not the rescan");
-        assert_eq!(merged[0].print_count, 0, "content change resets print_count");
+        assert_eq!(
+            merged[0].print_count, 0,
+            "content change resets print_count"
+        );
         assert_eq!(changed, vec![id]);
     }
 

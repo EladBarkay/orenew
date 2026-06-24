@@ -31,7 +31,9 @@ struct TokenUser {
 /// Exchange a refresh token for a fresh session via Supabase Auth.
 pub async fn refresh(refresh_token: &str) -> Result<Session> {
     let res = http()?
-        .post(format!("{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"))
+        .post(format!(
+            "{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token"
+        ))
         .header("apikey", SUPABASE_ANON_KEY)
         .json(&serde_json::json!({ "refresh_token": refresh_token }))
         .send()

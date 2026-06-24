@@ -1,7 +1,7 @@
+use crate::photo::{crop, frame, loader};
+use crate::project::model::{FramePreset, Photo};
 use anyhow::Result;
 use image::DynamicImage;
-use crate::photo::{loader, crop, frame};
-use crate::project::model::{Photo, FramePreset};
 
 const PREVIEW_MAX: u32 = 1200;
 
@@ -18,9 +18,9 @@ pub fn generate_framed_preview(photo: &Photo, preset: Option<&FramePreset>) -> R
             let orient = photo.effective_orientation();
             // Portrait photos crop to the inverted ratio so the preview matches export.
             let ratio = crate::photo::batch::orientation_ratio(preset, orient);
-            let crop_rect = photo.crop_override.unwrap_or_else(|| {
-                crop::compute_crop_rect(loaded.width(), loaded.height(), ratio)
-            });
+            let crop_rect = photo
+                .crop_override
+                .unwrap_or_else(|| crop::compute_crop_rect(loaded.width(), loaded.height(), ratio));
             let cropped = crop::apply_crop(&loaded, crop_rect);
             let base = scale_for_preview(cropped);
             frame::apply_frame_overlay(&base, preset.frame_path(orient))?
@@ -28,7 +28,10 @@ pub fn generate_framed_preview(photo: &Photo, preset: Option<&FramePreset>) -> R
     };
 
     let mut buf = Vec::new();
-    preview.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)?;
+    preview.write_to(
+        &mut std::io::Cursor::new(&mut buf),
+        image::ImageFormat::Jpeg,
+    )?;
     Ok(buf)
 }
 

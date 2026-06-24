@@ -1,10 +1,10 @@
-pub mod session;
-pub mod jwt;
+pub mod client;
+pub mod device;
 pub mod entitlement;
 pub mod entitlement_token;
-pub mod device;
-pub mod client;
+pub mod jwt;
 pub mod provision;
+pub mod session;
 
 /// Bundled auth state held in memory: the active Supabase session plus the
 /// resolved entitlement. `None` in `AppState.auth` => Free tier.
