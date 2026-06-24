@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # Runs on main too so the default-branch Rust cache stays warm — PR runs
+  # (including dependabot's) restore from it instead of compiling cold.
   push:
     branches: [main]
 
@@ -10,6 +12,11 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# CI doesn't need optimized dependencies; the dev profile builds deps at
+# opt-level 3 (for fast `tauri dev` image work, see Cargo.toml), which dominates
+# compile time here. The clippy/test steps below override deps to opt-level 0 via
+# `--config` (cargo has no env form for the `package."*"` glob).
 
 jobs:
   ci:
@@ -54,7 +61,7 @@ jobs:
 
       - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --config 'profile.dev.package."*".opt-level=0' --all-targets -- -D warnings
 
       # Debug profile — build.rs only panics on placeholder creds for `release`,
       # so tests run without Supabase/entitlement secrets. The release-only perf
@@ -63,4 +70,4 @@ jobs:
       # runners. Run it locally.
       - name: Test
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test --config 'profile.dev.package."*".opt-level=0'
