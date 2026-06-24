@@ -1,7 +1,7 @@
+use crate::photo::{crop, imageops, loader};
+use crate::project::model::{FramePreset, Orientation, Photo};
 use anyhow::Result;
 use image::{DynamicImage, RgbaImage};
-use crate::project::model::{FramePreset, Orientation, Photo};
-use crate::photo::{loader, crop, imageops};
 
 /// Frames pre-resized to their final placement dimensions and pre-converted
 /// to RGBA8 — prepared **once** per save/print run so the per-photo hot path
@@ -104,9 +104,9 @@ pub fn frame_photo_for_canvas(
         Orientation::Portrait => &frames.portrait,
     };
 
-    let crop_rect = photo.crop_override.unwrap_or_else(|| {
-        crop::compute_crop_rect(loaded.width(), loaded.height(), ratio)
-    });
+    let crop_rect = photo
+        .crop_override
+        .unwrap_or_else(|| crop::compute_crop_rect(loaded.width(), loaded.height(), ratio));
     let scaled = imageops::crop_and_resize(&loaded, crop_rect, target_w, target_h);
     let framed = imageops::overlay_frame(&scaled, frame_img);
     Ok(if rotate { framed.rotate90() } else { framed })
@@ -115,8 +115,8 @@ pub fn frame_photo_for_canvas(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use image::Rgba;
+    use std::path::PathBuf;
     use uuid::Uuid;
 
     fn test_preset() -> FramePreset {
@@ -246,7 +246,10 @@ mod tests {
 
         // Opaque RED frame covers the photo → proves the landscape frame was picked.
         let px = out.to_rgba8().get_pixel(10, 10).0;
-        assert!(px[0] > 200 && px[1] < 50 && px[2] < 50, "expected red frame, got {px:?}");
+        assert!(
+            px[0] > 200 && px[1] < 50 && px[2] < 50,
+            "expected red frame, got {px:?}"
+        );
     }
 
     #[test]
@@ -262,7 +265,10 @@ mod tests {
 
         // Opaque BLUE frame → proves the portrait frame was picked (no landscape leak).
         let px = out.to_rgba8().get_pixel(10, 10).0;
-        assert!(px[2] > 200 && px[0] < 50 && px[1] < 50, "expected blue frame, got {px:?}");
+        assert!(
+            px[2] > 200 && px[0] < 50 && px[1] < 50,
+            "expected blue frame, got {px:?}"
+        );
     }
 
     /// Stage-by-stage timing breakdown for the hot path (diagnostic only).
@@ -271,10 +277,20 @@ mod tests {
     #[ignore]
     fn perf_breakdown() {
         let preset = test_preset();
-        let path = write_temp_jpeg("perf_bd_6000x4000.jpg", 6000, 4000, Rgba([142, 95, 60, 255]));
+        let path = write_temp_jpeg(
+            "perf_bd_6000x4000.jpg",
+            6000,
+            4000,
+            Rgba([142, 95, 60, 255]),
+        );
         let photo = test_photo(path.clone(), 6000, 4000);
-        let frames =
-            prepare_frames(&preset, 1200, 1600, &solid(1200, 800, RED), &solid(800, 1200, BLUE));
+        let frames = prepare_frames(
+            &preset,
+            1200,
+            1600,
+            &solid(1200, 800, RED),
+            &solid(800, 1200, BLUE),
+        );
 
         let t = std::time::Instant::now();
         let loaded = loader::load_photo(&path).unwrap();
@@ -295,7 +311,12 @@ mod tests {
 
         let t = std::time::Instant::now();
         let out = if rotate { framed.rotate90() } else { framed };
-        println!("rotate90:      {:?} (rotated={rotate}, {}x{})", t.elapsed(), out.width(), out.height());
+        println!(
+            "rotate90:      {:?} (rotated={rotate}, {}x{})",
+            t.elapsed(),
+            out.width(),
+            out.height()
+        );
     }
 
     /// Performance regression guard for the per-photo export hot path.
@@ -307,8 +328,13 @@ mod tests {
         let preset = test_preset();
         let path = write_temp_jpeg("perf_6000x4000.jpg", 6000, 4000, Rgba([142, 95, 60, 255]));
         let photo = test_photo(path, 6000, 4000);
-        let frames =
-            prepare_frames(&preset, 1200, 1600, &solid(1200, 800, RED), &solid(800, 1200, BLUE));
+        let frames = prepare_frames(
+            &preset,
+            1200,
+            1600,
+            &solid(1200, 800, RED),
+            &solid(800, 1200, BLUE),
+        );
 
         // Warm-up (page cache, allocator).
         frame_photo_for_canvas(&photo, &preset, 1200, 1600, &frames).unwrap();

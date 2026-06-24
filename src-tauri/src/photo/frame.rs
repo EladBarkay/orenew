@@ -1,7 +1,7 @@
-use std::path::Path;
+use crate::photo::imageops;
 use anyhow::{Context, Result};
 use image::DynamicImage;
-use crate::photo::imageops;
+use std::path::Path;
 
 /// Alpha-composite a frame PNG (with transparency) over `base`, scaling the
 /// frame to match `base` dimensions. Used by the preview path, which loads the
@@ -27,7 +27,8 @@ mod tests {
             .save(&frame_path)
             .unwrap();
 
-        let base = DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 20, Rgba([200, 100, 50, 255])));
+        let base =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 20, Rgba([200, 100, 50, 255])));
         let out = apply_frame_overlay(&base, &frame_path).unwrap().to_rgba8();
         assert_eq!(out.get_pixel(10, 10), &Rgba([0, 0, 0, 255]));
     }

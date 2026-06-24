@@ -1,6 +1,6 @@
-use std::path::Path;
 use anyhow::{Context, Result};
 use image::DynamicImage;
+use std::path::Path;
 
 const PRINT_DPI: u16 = 300;
 
@@ -28,8 +28,7 @@ pub fn write_print_ready(image: &DynamicImage, output_path: &Path) -> Result<()>
 
     set_jfif_dpi(&mut buf, PRINT_DPI);
 
-    std::fs::write(output_path, &buf)
-        .with_context(|| format!("writing {}", output_path.display()))
+    std::fs::write(output_path, &buf).with_context(|| format!("writing {}", output_path.display()))
 }
 
 /// Patch the JFIF APP0 density fields to `dpi` (units = dots/inch).

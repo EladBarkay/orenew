@@ -1,23 +1,23 @@
-mod commands;
-mod photo;
-mod project;
-mod preview;
-mod canvas;
-mod watcher;
 mod auth;
-mod json_store;
+mod canvas;
+mod commands;
 mod constants;
+mod json_store;
+mod photo;
+mod preview;
+mod project;
+mod watcher;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use project::persistence::EventStore;
-use preview::thumbnail::ThumbnailCache;
-use watcher::fs_watcher::FsWatcher;
 use auth::entitlement::{Entitlement, Tier};
 use auth::session::Session;
 use auth::AuthState;
+use preview::thumbnail::ThumbnailCache;
+use project::persistence::EventStore;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+use watcher::fs_watcher::FsWatcher;
 
 pub struct AppState {
     pub store: EventStore,
@@ -27,8 +27,11 @@ pub struct AppState {
     /// Current auth state (session + entitlement). `None` => signed out / Free.
     pub auth: Mutex<Option<AuthState>>,
     /// Framed preview cache keyed by (photo_id, preset_id).
-    pub preview_cache: Arc<Mutex<HashMap<(Uuid, Uuid), Vec<u8>>>>,
+    pub preview_cache: Arc<Mutex<PreviewCache>>,
 }
+
+/// Framed preview bytes keyed by (photo_id, preset_id).
+type PreviewCache = HashMap<(Uuid, Uuid), Vec<u8>>;
 
 impl AppState {
     /// Effective tier — Free unless a valid Pro/Studio entitlement is active.
@@ -47,12 +50,18 @@ impl AppState {
 
     /// Drop cached framed previews that use the given frame preset.
     pub fn invalidate_preview_for_preset(&self, preset_id: Uuid) {
-        self.preview_cache.lock().unwrap().retain(|(_, fpid), _| *fpid != preset_id);
+        self.preview_cache
+            .lock()
+            .unwrap()
+            .retain(|(_, fpid), _| *fpid != preset_id);
     }
 
     /// Drop cached framed previews for the given photo across all presets.
     pub fn invalidate_preview_for_photo(&self, photo_id: Uuid) {
-        self.preview_cache.lock().unwrap().retain(|(pid, _), _| *pid != photo_id);
+        self.preview_cache
+            .lock()
+            .unwrap()
+            .retain(|(pid, _), _| *pid != photo_id);
     }
 }
 
@@ -94,19 +103,21 @@ pub fn run() {
             let data_dir = app.path().app_data_dir().expect("app_data_dir");
             std::fs::create_dir_all(&data_dir).expect("create app_data_dir");
 
-            let store = EventStore::new(data_dir.join("events"))
-                .expect("EventStore init");
+            let store = EventStore::new(data_dir.join("events")).expect("EventStore init");
             // Clones for the coalesced-write flush task + the window-close hook.
             // EventStore is Arc-backed, so these share the same cache/dirty set.
             let store_flush = store.clone();
             let store_close = store.clone();
-            let thumbs = ThumbnailCache::new(data_dir.join("thumbs"))
-                .expect("ThumbnailCache init");
+            let thumbs = ThumbnailCache::new(data_dir.join("thumbs")).expect("ThumbnailCache init");
 
             let app_handle = app.handle().clone();
             let fs_watcher = FsWatcher::new(move |path: PathBuf| {
-                let _ = app_handle.emit(constants::events::FS_CHANGED, path.to_string_lossy().to_string());
-            }).expect("FsWatcher init");
+                let _ = app_handle.emit(
+                    constants::events::FS_CHANGED,
+                    path.to_string_lossy().to_string(),
+                );
+            })
+            .expect("FsWatcher init");
 
             // Load the cached session, then offline-verify the cached entitlement
             // token (signature + device + grace) to seed the tier. This is only a
@@ -116,9 +127,12 @@ pub fn run() {
             let initial_auth = json_store::load_json::<Session>(&data_dir.join("session.json"))
                 .ok()
                 .map(|session| {
-                    let entitlement = auth::provision::load_cached(&data_dir)
-                        .unwrap_or_else(Entitlement::free);
-                    AuthState { session, entitlement }
+                    let entitlement =
+                        auth::provision::load_cached(&data_dir).unwrap_or_else(Entitlement::free);
+                    AuthState {
+                        session,
+                        entitlement,
+                    }
                 });
 
             app.manage(AppState {
@@ -277,7 +291,10 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
         match auth::provision::provision(&data_dir, &session.access_token).await {
             Ok(auth::provision::Provisioned::Active(entitlement)) => {
                 if let Ok(mut guard) = state.auth.lock() {
-                    *guard = Some(AuthState { session, entitlement });
+                    *guard = Some(AuthState {
+                        session,
+                        entitlement,
+                    });
                 }
                 let _ = app.emit(constants::events::TIER_CHANGED, ());
                 break; // Done for this session.
@@ -287,7 +304,10 @@ async fn auth_refresh_loop(app: tauri::AppHandle) {
                 // clear the cached token, and prompt the UI to re-select a device.
                 auth::provision::clear_cached(&data_dir);
                 if let Ok(mut guard) = state.auth.lock() {
-                    *guard = Some(AuthState { session, entitlement: Entitlement::free() });
+                    *guard = Some(AuthState {
+                        session,
+                        entitlement: Entitlement::free(),
+                    });
                 }
                 let _ = app.emit(constants::events::DEVICE_LIMIT, devices);
                 break;

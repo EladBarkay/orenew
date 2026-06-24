@@ -14,8 +14,8 @@ fn main() {
     let url = std::env::var("SUPABASE_URL")
         .unwrap_or_else(|_| "https://YOUR_PROJECT_REF.supabase.co".to_string());
     println!("cargo:rustc-env=SUPABASE_URL={url}");
-    let anon_key = std::env::var("SUPABASE_ANON_KEY")
-        .unwrap_or_else(|_| "YOUR_SUPABASE_ANON_KEY".to_string());
+    let anon_key =
+        std::env::var("SUPABASE_ANON_KEY").unwrap_or_else(|_| "YOUR_SUPABASE_ANON_KEY".to_string());
     println!("cargo:rustc-env=SUPABASE_ANON_KEY={anon_key}");
 
     // Ed25519 public key (SPKI PEM) used to verify the server-signed entitlement
@@ -28,7 +28,9 @@ fn main() {
     // escaped to the two-char sequence `\n`; the runtime verifier decodes them
     // back before parsing the key.
     let ent_key = std::env::var("ENTITLEMENT_PUBLIC_KEY")
-        .unwrap_or_else(|_| "-----BEGIN PUBLIC KEY-----\nUNCONFIGURED\n-----END PUBLIC KEY-----".to_string())
+        .unwrap_or_else(|_| {
+            "-----BEGIN PUBLIC KEY-----\nUNCONFIGURED\n-----END PUBLIC KEY-----".to_string()
+        })
         .replace('\r', "")
         .replace('\n', "\\n");
     println!("cargo:rustc-env=ENTITLEMENT_PUBLIC_KEY={ent_key}");

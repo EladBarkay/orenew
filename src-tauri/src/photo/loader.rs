@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
-use image::{DynamicImage, ImageDecoder};
-use image::metadata::Orientation as ExifOrientation;
-use sha2::{Sha256, Digest};
 use crate::project::model::{Orientation, Photo};
+use anyhow::{Context, Result};
+use image::metadata::Orientation as ExifOrientation;
+use image::{DynamicImage, ImageDecoder};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 /// Decode an image with its EXIF orientation applied, so a photo rotated via
@@ -17,7 +17,9 @@ pub fn load_photo(path: &Path) -> Result<DynamicImage> {
         .with_context(|| format!("reading format of {}", path.display()))?
         .into_decoder()
         .with_context(|| format!("decoding {}", path.display()))?;
-    let orientation = decoder.orientation().unwrap_or(ExifOrientation::NoTransforms);
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(ExifOrientation::NoTransforms);
     let mut img = DynamicImage::from_decoder(decoder)
         .with_context(|| format!("decoding {}", path.display()))?;
     img.apply_orientation(orientation);
@@ -52,7 +54,11 @@ pub fn read_exif_orientation(path: &Path) -> Option<Orientation> {
 
 pub fn xmp_path_for(photo_path: &Path) -> Option<PathBuf> {
     let xmp = photo_path.with_extension("xmp");
-    if xmp.exists() { Some(xmp) } else { None }
+    if xmp.exists() {
+        Some(xmp)
+    } else {
+        None
+    }
 }
 
 /// Content-based SHA-256 of the photo bytes followed by the XMP sidecar bytes
@@ -87,7 +93,9 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         .into_decoder()
         .with_context(|| format!("reading dimensions of {}", path.display()))?;
     let (w0, h0) = decoder.dimensions();
-    let orientation = decoder.orientation().unwrap_or(ExifOrientation::NoTransforms);
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(ExifOrientation::NoTransforms);
     let (width, height) = upright_dims(w0, h0, orientation);
     let xmp_path = xmp_path_for(&path);
     let content_hash = compute_content_hash(&path, xmp_path.as_deref())?;
@@ -115,7 +123,9 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
 /// any unavailable value (platform/fs limitation) falls back to 0.
 fn file_times(path: &Path) -> (u64, u64, u64) {
     use std::time::UNIX_EPOCH;
-    let Ok(meta) = std::fs::metadata(path) else { return (0, 0, 0) };
+    let Ok(meta) = std::fs::metadata(path) else {
+        return (0, 0, 0);
+    };
     let secs = |t: std::io::Result<std::time::SystemTime>| {
         t.ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -125,6 +135,16 @@ fn file_times(path: &Path) -> (u64, u64, u64) {
     (meta.len(), secs(meta.created()), secs(meta.modified()))
 }
 
+pub fn is_supported_image(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("jpg") | Some("jpeg") | Some("png") | Some("tif") | Some("tiff")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,19 +152,33 @@ mod tests {
     #[test]
     fn upright_dims_swaps_on_quarter_turns_only() {
         // 90°/270° rotations swap; everything else keeps order.
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::NoTransforms), (6000, 4000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate180), (6000, 4000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::FlipHorizontal), (6000, 4000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate90), (4000, 6000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate270), (4000, 6000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate90FlipH), (4000, 6000));
-        assert_eq!(upright_dims(6000, 4000, ExifOrientation::Rotate270FlipH), (4000, 6000));
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::NoTransforms),
+            (6000, 4000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::Rotate180),
+            (6000, 4000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::FlipHorizontal),
+            (6000, 4000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::Rotate90),
+            (4000, 6000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::Rotate270),
+            (4000, 6000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::Rotate90FlipH),
+            (4000, 6000)
+        );
+        assert_eq!(
+            upright_dims(6000, 4000, ExifOrientation::Rotate270FlipH),
+            (4000, 6000)
+        );
     }
-}
-
-pub fn is_supported_image(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
-        Some("jpg") | Some("jpeg") | Some("png") | Some("tif") | Some("tiff")
-    )
 }

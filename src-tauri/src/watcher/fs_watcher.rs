@@ -1,7 +1,7 @@
+use anyhow::Result;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use anyhow::Result;
 
 /// Watches directories and calls `on_changed(path)` for each file that is
 /// created, modified, or deleted. Emits the full file path so the consumer can

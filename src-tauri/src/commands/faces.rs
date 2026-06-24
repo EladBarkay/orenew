@@ -1,15 +1,15 @@
+use crate::commands::batch::run_bounded;
+use crate::commands::IntoTauri;
+use crate::AppState;
+use rayon::prelude::*;
+use rustface::{Detector, ImageData};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use rayon::prelude::*;
-use rustface::{Detector, ImageData};
-use serde::Serialize;
 use tauri::{Emitter, State};
 use uuid::Uuid;
-use crate::commands::batch::run_bounded;
-use crate::commands::IntoTauri;
-use crate::AppState;
 
 /// SeetaFace frontal detection model, embedded so there's no runtime path to
 /// resolve or bundle separately. ~1.2MB.
@@ -28,8 +28,7 @@ struct FaceScanProgress {
 /// Fresh detector from the embedded model — cheap (in-memory), one per rayon
 /// worker since `Detector::detect` takes `&mut self` and isn't shareable.
 fn new_detector() -> Box<dyn Detector> {
-    let model = rustface::read_model(Cursor::new(FACE_MODEL))
-        .expect("embedded face model parses");
+    let model = rustface::read_model(Cursor::new(FACE_MODEL)).expect("embedded face model parses");
     let mut det = rustface::create_detector_with_model(model);
     det.set_min_face_size(24);
     det.set_score_thresh(2.0);
@@ -69,7 +68,8 @@ pub async fn count_faces_in_batch(
 ) -> Result<HashMap<Uuid, u32>, String> {
     let event = state.store.load(event_id).tauri()?;
     let batch = event
-        .batches.iter()
+        .batches
+        .iter()
         .find(|b| b.id == batch_id)
         .ok_or("batch not found")?;
     // Scan only the requested photos when given a non-empty subset; otherwise the
@@ -78,7 +78,8 @@ pub async fn count_faces_in_batch(
         .filter(|ids| !ids.is_empty())
         .map(|ids| ids.into_iter().collect());
     let paths: Vec<(Uuid, std::path::PathBuf)> = batch
-        .photos.iter()
+        .photos
+        .iter()
         .filter(|p| only.as_ref().is_none_or(|s| s.contains(&p.id)))
         .map(|p| (p.id, p.path.clone()))
         .collect();

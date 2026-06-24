@@ -1,10 +1,10 @@
+use crate::json_store::{load_json, save_json};
+use crate::project::model::Event;
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use anyhow::Result;
 use uuid::Uuid;
-use crate::json_store::{load_json, save_json};
-use crate::project::model::Event;
 
 /// Manages reading/writing event state in `{app_data}/events/`.
 /// Constructed once at app startup from `app.path().app_data_dir()` and held in Tauri state.

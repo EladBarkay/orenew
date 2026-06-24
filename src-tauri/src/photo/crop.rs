@@ -1,5 +1,5 @@
-use image::DynamicImage;
 use crate::project::model::CropRect;
+use image::DynamicImage;
 
 /// Compute the centered crop rect that fits `target_ratio` (w/h) inside `(img_w, img_h)`.
 pub fn compute_crop_rect(img_w: u32, img_h: u32, target_ratio: f32) -> CropRect {
@@ -19,7 +19,12 @@ pub fn compute_crop_rect(img_w: u32, img_h: u32, target_ratio: f32) -> CropRect 
 
     let x = (img_w - crop_w) / 2;
     let y = (img_h - crop_h) / 2;
-    CropRect { x, y, width: crop_w, height: crop_h }
+    CropRect {
+        x,
+        y,
+        width: crop_w,
+        height: crop_h,
+    }
 }
 
 pub fn apply_crop(image: &DynamicImage, rect: CropRect) -> DynamicImage {

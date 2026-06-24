@@ -80,14 +80,21 @@ fn verify_with_key(token: &str, device_hash: &str, key: &DecodingKey) -> Result<
     // re-checks the 14-day grace against it for long-running sessions.
     let last_verified = DateTime::<Utc>::from_timestamp(claims.iat, 0).unwrap_or_else(Utc::now);
 
-    Ok(Entitlement { email: claims.email, tier, expires_at, last_verified })
+    Ok(Entitlement {
+        email: claims.email,
+        tier,
+        expires_at,
+        last_verified,
+    })
 }
 
 /// Accept either a plain date ("2025-12-31") or an RFC3339 timestamp.
 fn parse_date(s: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .ok()
-        .or_else(|| DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.date_naive()))
+    NaiveDate::parse_from_str(s, "%Y-%m-%d").ok().or_else(|| {
+        DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.date_naive())
+    })
 }
 
 #[cfg(test)]
