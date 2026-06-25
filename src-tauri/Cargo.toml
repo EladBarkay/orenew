@@ -44,7 +44,7 @@ jsonwebtoken = "9"
 # Stable per-machine id for device binding (license seat enforcement).
 machine-uid = "0.6"
 # Human-readable device label (name + OS) shown in the device picker.
-whoami = "1"
+whoami = "2"
 
 # File watching
 notify = { version = "7", features = ["serde"] }
