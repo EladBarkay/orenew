@@ -20,12 +20,12 @@
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-deep-link": "^2",
     "@tauri-apps/plugin-updater": "^2",
-    "react-window": "^1"
+    "react-window": "^2"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "@types/react-window": "^1",
+    "@types/react-window": "^2",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
