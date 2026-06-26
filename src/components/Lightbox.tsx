@@ -47,12 +47,12 @@ export default function Lightbox({
     setPreviewFrameId(event.active_frame_preset_id);
   }, [event.active_frame_preset_id]);
 
-  const framedSrc = useFramedPreview(event.id, photo.id, previewFrameId, frameNonce, photo.content_hash);
+  const framedSrc = useFramedPreview(event.id, photo.path, previewFrameId, frameNonce, photo.content_hash);
   const displaySrc = framedSrc ?? thumb;
 
   // Warm the framed preview for the ±2 neighbors so left/right nav feels instant
-  // (backend caches per (photo_id, preset_id)). Filmstrip shows a wider window.
-  const currentIndex = photos.findIndex((p) => p.id === photo.id);
+  // (backend caches per (photo_path, preset_id)). Filmstrip shows a wider window.
+  const currentIndex = photos.findIndex((p) => p.path === photo.path);
   const prefetchIds = [-2, -1, 1, 2]
     .map((d) => photos[currentIndex + d])
     .filter((p): p is Photo => !!p);
@@ -68,8 +68,8 @@ export default function Lightbox({
   const orientation = photo.orientation_override ?? naturalOrientation;
 
   function handleOrientClick(o: Orientation) {
-    if (o === naturalOrientation && photo.orientation_override !== null) onClearOrientationOverride(photo.id);
-    else onOrientationOverride(photo.id, o);
+    if (o === naturalOrientation && photo.orientation_override !== null) onClearOrientationOverride(photo.path);
+    else onOrientationOverride(photo.path, o);
   }
 
   return (
@@ -88,7 +88,7 @@ export default function Lightbox({
 
       {/* Hidden prefetchers for neighbor framed previews (render nothing). */}
       {prefetchIds.map((p) => (
-        <PreviewPrefetch key={p.id} eventId={event.id} photoId={p.id} presetId={previewFrameId} frameNonce={frameNonce} hash={p.content_hash} />
+        <PreviewPrefetch key={p.path} eventId={event.id} photoPath={p.path} presetId={previewFrameId} frameNonce={frameNonce} hash={p.content_hash} />
       ))}
 
       {/* Image + nav arrows. Clicking the empty margin beside the image closes. */}
@@ -130,9 +130,9 @@ export default function Lightbox({
         <div className="flex items-center gap-2">
           <span>{t("galleryToolbar.copies")}</span>
           <div className="flex items-center gap-0.5 rounded-full bg-white/10 px-0.5 py-0.5">
-            <QtyButton size="sm" label="−" onClick={() => onQtyDelta(photo.id, -1)} disabled={qty <= 0} />
+            <QtyButton size="sm" label="−" onClick={() => onQtyDelta(photo.path, -1)} disabled={qty <= 0} />
             <span className="min-w-[20px] text-center text-sm font-semibold text-neutral-100 tabular-nums">{qty}</span>
-            <QtyButton size="sm" label="+" onClick={() => onQtyDelta(photo.id, 1)} />
+            <QtyButton size="sm" label="+" onClick={() => onQtyDelta(photo.path, 1)} />
           </div>
         </div>
 
@@ -207,10 +207,10 @@ function OrientBtn({ label, title, active, onClick }: { label: string; title: st
 
 // Warms the framed-preview cache for one photo, renders nothing. Mounted for the
 // current photo's neighbors so navigating to them hits the cache.
-function PreviewPrefetch({ eventId, photoId, presetId, frameNonce, hash }: {
-  eventId: string; photoId: string; presetId: string | null; frameNonce: number; hash: string;
+function PreviewPrefetch({ eventId, photoPath, presetId, frameNonce, hash }: {
+  eventId: string; photoPath: string; presetId: string | null; frameNonce: number; hash: string;
 }) {
-  useFramedPreview(eventId, photoId, presetId, frameNonce, hash);
+  useFramedPreview(eventId, photoPath, presetId, frameNonce, hash);
   return null;
 }
 

@@ -68,13 +68,13 @@ function Cell({
     >
       <PhotoCard
         photo={photo}
-        selected={selectedIds.has(photo.id)}
-        active={photo.id === selectedId}
+        selected={selectedIds.has(photo.path)}
+        active={photo.path === selectedId}
         onClick={(e) => onPhotoClick(photo, e)}
         onDoubleClick={() => onPhotoDoubleClick(photo)}
         cellSize={cellSize}
-        qty={photoQueue[photo.id] ?? 0}
-        onQtyDelta={(delta) => onQtyDelta(photo.id, delta)}
+        qty={photoQueue[photo.path] ?? 0}
+        onQtyDelta={(delta) => onQtyDelta(photo.path, delta)}
       />
     </div>
   );

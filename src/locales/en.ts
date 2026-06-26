@@ -21,14 +21,11 @@ const en = {
 
   app: {
     loading: "Loading…",
-    loadingBatch: "Loading batch…",
     error: "Error: {{message}}",
     openToBegin: "Open an event to begin",
     deleteEventConfirm:
       'Delete event "{{name}}"? This removes all saved settings and cannot be undone.',
     deleteEventTitle: "Delete event",
-    removeBatchConfirm: 'Remove batch "{{name}}" from this event? Files are not deleted.',
-    removeBatchTitle: "Remove batch",
     deleteCanvasConfirm: 'Delete canvas preset "{{name}}"?',
     deleteCanvasTitle: "Delete canvas preset",
     deleteFrameConfirm: 'Delete frame preset "{{name}}"? The PNG files are not deleted.',
@@ -73,18 +70,13 @@ const en = {
 
   actionBar: {
     clear: "Clear",
-    queuedSummary: "{{photos}} photos in this batch · {{copies}} active copies",
-    fromBatches: "{{n}} batches",
+    queuedSummary: "{{photos}} photos in this folder · {{copies}} active copies",
+    fromFolders: "{{n}} folders",
   },
 
   sidebar: {
-    batches: "Batches",
     add: "+ Add",
-    noBatches: "No batches —",
-    addFolder: "add a folder",
     revealFolder: "Double-click to reveal in file manager",
-    path: "path: {{path}}",
-    removeBatch: "Remove batch",
     frames: "Frames",
     noFrames: "No frames —",
     addOne: "add one",
@@ -97,7 +89,7 @@ const en = {
   },
 
   gallery: {
-    noPhotos: "No photos in this batch",
+    noPhotos: "No photos in this folder",
   },
 
   preview: {

@@ -21,8 +21,14 @@ import { useAuthDeepLink } from "./hooks/useAuthDeepLink";
 import { useUpdater } from "./hooks/useUpdater";
 import { listDevices, currentDeviceHash } from "./lib/auth";
 import { rangeIds } from "./lib/selection";
+import { parentDir } from "./lib/paths";
 import { EVENTS } from "./constants";
-import { OrenewEvent, Orientation, Photo, PhotoBatch, FolderNode, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
+import { OrenewEvent, Orientation, Photo, FramePreset, CanvasPreset, Entitlement, AuthResult, Device } from "./types";
+
+// A photo belongs to the folder that is its parent directory. Both sides are
+// normalised (Rust paths can use `\` on Windows) before comparison.
+const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
+const folderOf = (photoPath: string) => parentDir(photoPath);
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
@@ -30,8 +36,9 @@ export type SortKey = "name" | "created" | "modified" | "size";
 export default function App() {
   const { t, i18n } = useTranslation();
   const [event, setEvent] = useState<OrenewEvent | null>(null);
-  const [activeBatch, setActiveBatch] = useState<PhotoBatch | null>(null);
-  const [folderTree, setFolderTree] = useState<FolderNode | null>(null);
+  // The folder currently shown in the gallery (its absolute path). Photos are
+  // derived from `event.photos` by matching parent dir.
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
@@ -75,6 +82,13 @@ export default function App() {
     anchorRef.current = null;
   }
   const colCountRef = useRef(1);
+
+  // Photos of the active folder, derived from the event's path-keyed map by
+  // matching parent directory. Defined early so the queue-seeding effect can read it.
+  const folderPhotos: Photo[] =
+    event && activePath
+      ? Object.values(event.photos).filter((p) => folderOf(p.path) === norm(activePath))
+      : [];
 
   // Block the webview reload shortcuts — a reload wipes the in-memory event and
   // forces the user to re-open it.
@@ -160,47 +174,40 @@ export default function App() {
   // Best-effort signed update check on startup.
   useUpdater();
 
-  useFsWatcher(event, activeBatch, {
-    onEvent: setEvent,
-    onActiveBatch: (b) => {
-      setActiveBatch(b);
+  useFsWatcher(event, activePath, {
+    onEvent: (updated) => {
+      setEvent(updated);
       // Refresh the previewed photo too, so its new content_hash flows to the
       // preview/thumbnail and they re-fetch after an on-disk edit/rotation.
-      setSelected((prev) => (prev ? (b.photos.find((p) => p.id === prev.id) ?? prev) : prev));
+      setSelected((prev) => (prev ? (updated.photos[prev.path] ?? prev) : prev));
     },
     onFrameChanged: () => setFrameNonce((n) => n + 1),
-    onTreeChanged: refreshTree,
   });
 
-  // Seed the global copy-queue from each photo's persisted `copies` (across all
-  // batches), so a reopened event restores the last values instead of resetting to 1.
+  // Seed the global copy-queue from each photo's persisted `copies` (keyed by
+  // path), so a reopened event restores the last values instead of resetting to 1.
   function seedQueueFromEvent(evt: OrenewEvent): Record<string, number> {
     const q: Record<string, number> = {};
-    const all: string[] = [];
-    for (const b of evt.batches) {
-      for (const p of b.photos) {
-        all.push(p.id);
-        if (p.copies > 0) q[p.id] = p.copies;
-      }
+    for (const p of Object.values(evt.photos)) {
+      if (p.copies > 0) q[p.path] = p.copies;
     }
-    seenIdsRef.current = new Set(all);
+    seenIdsRef.current = new Set(Object.keys(evt.photos));
     skipPersistRef.current = true; // don't write the freshly-loaded values back
     return q;
   }
 
-  // Seed qty=1 for photos that appear after the batch was opened (added on disk
-  // and picked up by the watcher). Runs after refresh updates activeBatch.
+  // Seed qty=1 for photos that appear after a folder was opened (added on disk and
+  // picked up by the watcher). Runs after the active folder's photos change.
   useEffect(() => {
-    if (!activeBatch) return;
-    const newIds = activeBatch.photos.filter((p) => !seenIdsRef.current.has(p.id));
-    if (newIds.length === 0) return;
+    const newPhotos = folderPhotos.filter((p) => !seenIdsRef.current.has(p.path));
+    if (newPhotos.length === 0) return;
     setPhotoQueue((prev) => {
       const next = { ...prev };
-      for (const p of newIds) next[p.id] = 1;
+      for (const p of newPhotos) next[p.path] = 1;
       return next;
     });
-    for (const p of newIds) seenIdsRef.current.add(p.id);
-  }, [activeBatch]);
+    for (const p of newPhotos) seenIdsRef.current.add(p.path);
+  }, [folderPhotos]);
 
   // Persist queued copies (debounced) so they survive close/reopen. Skips the run
   // right after a load (seedQueueFromEvent) so we don't echo disk values back.
@@ -222,22 +229,21 @@ export default function App() {
       setStatus(t("app.loading"));
       const evt = await invoke<OrenewEvent>("open_event", { path: folder });
       setEvent(evt);
-      setActiveBatch(null);
       clearSelection();
       setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
-      // Load the folder tree and open the root folder so the gallery isn't empty.
-      const tree = await invoke<FolderNode>("list_folder_tree", { root: evt.root_path ?? folder });
-      setFolderTree(tree);
-      await selectFolder(tree.path, evt);
+      // Open the root folder so the gallery isn't empty; subfolders are browsed
+      // from the sidebar tree.
+      const root = evt.root_path ?? (folder as string);
+      await selectFolder(root, evt);
       setStatus("");
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
   }
 
-  // Open a folder from the sidebar tree: lazy find-or-create its batch in Rust,
-  // then make it active. `forEvent` lets openEvent pass the just-loaded event
+  // Open a folder from the sidebar tree: scan + merge its photos in Rust, then make
+  // it the active folder. `forEvent` lets openEvent pass the just-loaded event
   // before state has settled.
   async function selectFolder(path: string, forEvent?: OrenewEvent) {
     const evt = forEvent ?? event;
@@ -245,21 +251,11 @@ export default function App() {
     try {
       const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path });
       setEvent(updated);
-      const batch = updated.batches.find((b) => b.source_path === path) ?? null;
-      setActiveBatch(batch); // seenIdsRef effect seeds any new photos to qty 1
+      setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
       clearSelection();
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
-  }
-
-  // Re-fetch the folder tree (debounced by the watcher) so new/removed subfolders
-  // — e.g. a fresh SD dump — appear without reopening the event.
-  async function refreshTree() {
-    if (!event?.root_path) return;
-    try {
-      setFolderTree(await invoke<FolderNode>("list_folder_tree", { root: event.root_path }));
-    } catch {}
   }
 
   async function deleteEvent() {
@@ -273,8 +269,7 @@ export default function App() {
     try {
       await invoke("delete_event", { eventId: event.id });
       setEvent(null);
-      setActiveBatch(null);
-      setFolderTree(null);
+      setActivePath(null);
       setSelected(null);
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
@@ -326,18 +321,14 @@ export default function App() {
 
   function updateEvent(updated: OrenewEvent) {
     setEvent(updated);
-    if (activeBatch) {
-      const refreshed = updated.batches.find((b) => b.id === activeBatch.id);
-      if (refreshed) setActiveBatch(refreshed);
-    }
   }
 
-  const totalPhotos = event?.batches.reduce((n, b) => n + b.photos.length, 0) ?? 0;
-  const photos = activeBatch?.photos ?? [];
+  const totalPhotos = event ? Object.keys(event.photos).length : 0;
+  const photos = folderPhotos;
   // When "hide empty" is on, drop photos queued for 0 copies from the grid, then
   // sort by the chosen key/direction (name uses path order, which the backend
   // already produces, so the default is a no-op).
-  const filteredPhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.id] ?? 0) > 0) : photos;
+  const filteredPhotos = hideEmpty ? photos.filter((p) => (photoQueue[p.path] ?? 0) > 0) : photos;
   const visiblePhotos = [...filteredPhotos].sort((a, b) => {
     const c =
       sortKey === "name" ? a.path.localeCompare(b.path) :
@@ -347,27 +338,22 @@ export default function App() {
     return c * sortDir;
   });
 
-  // Batch actions act on the selection, or the whole batch when nothing is selected.
-  const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.id);
+  // Bulk actions act on the selection, or the whole folder when nothing is selected.
+  const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.path);
   // Process/totals only count the targeted photos.
   const effectiveQueue = selectedIds.size > 0
-    ? Object.fromEntries(Object.entries(photoQueue).filter(([id]) => selectedIds.has(id)))
+    ? Object.fromEntries(Object.entries(photoQueue).filter(([path]) => selectedIds.has(path)))
     : photoQueue;
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
 
-  // Export indicator: which batches contribute to the (effective) queue + a few
-  // thumbnails. The queue is global, so a queued photo can live in any batch —
+  // Export indicator: how many folders contribute to the (effective) queue + a few
+  // thumbnails. The queue is global, so a queued photo can live in any folder —
   // make that scope visible next to the Export button.
-  const queuedIds = Object.keys(effectiveQueue).filter((id) => (effectiveQueue[id] ?? 0) > 0);
-  const idToPhoto = new Map<string, Photo>();
-  const idToBatch = new Map<string, string>();
-  for (const b of event?.batches ?? []) {
-    for (const p of b.photos) { idToPhoto.set(p.id, p); idToBatch.set(p.id, b.name); }
-  }
-  const exportBatchCount = new Set(queuedIds.map((id) => idToBatch.get(id)).filter(Boolean)).size;
-  const exportThumbs = queuedIds
+  const queuedPaths = Object.keys(effectiveQueue).filter((p) => (effectiveQueue[p] ?? 0) > 0);
+  const exportFolderCount = new Set(queuedPaths.map(folderOf)).size;
+  const exportThumbs = queuedPaths
     .slice(0, 3)
-    .map((id) => idToPhoto.get(id))
+    .map((path) => event?.photos[path])
     .filter((p): p is Photo => !!p)
     .map((p) => ({ path: p.path, hash: p.content_hash }));
 
@@ -376,8 +362,10 @@ export default function App() {
   // only the selected photos (or the whole batch if none selected) and merges the
   // result into the queue, leaving non-scanned photos' quantities untouched.
   async function scanFaces() {
-    if (!event || !activeBatch) return;
-    const ids = selectedIds.size > 0 ? [...selectedIds] : null;
+    if (!event || !activePath) return;
+    // Scan the selected photos, or the whole folder when nothing is selected.
+    const photoPaths = selectedIds.size > 0 ? [...selectedIds] : folderPhotos.map((p) => p.path);
+    if (photoPaths.length === 0) return;
     setScanning(true);
     setScanProgress(null);
     // Progress is shown next to the Suggest-copies button in the gallery sub-bar,
@@ -387,18 +375,14 @@ export default function App() {
       (e) => setScanProgress({ done: e.payload.done, total: e.payload.total })
     );
     try {
-      const counts = await invoke<Record<string, number>>("count_faces_in_batch", {
-        eventId: event.id,
-        batchId: activeBatch.id,
-        photoIds: ids,
-      });
+      const counts = await invoke<Record<string, number>>("count_faces", { photoPaths });
       // Positive counts only (matches adjustQty's "no zero entries" rule); a
       // scanned photo with 0 faces falls through to qty 0 → dimmed card.
       setPhotoQueue((prev) => {
         const next = { ...prev };
-        for (const [id, n] of Object.entries(counts)) {
-          if (n > 0) next[id] = n;
-          else delete next[id];
+        for (const [path, n] of Object.entries(counts)) {
+          if (n > 0) next[path] = n;
+          else delete next[path];
         }
         return next;
       });
@@ -414,7 +398,7 @@ export default function App() {
   // Click selects (plain = replace, ctrl = toggle, shift = range from anchor);
   // `selected` tracks the last click for the preview + shift anchor.
   function handlePhotoClick(photo: Photo, e: React.MouseEvent) {
-    const id = photo.id;
+    const id = photo.path;
     setSelected(photo);
     if (e.shiftKey && anchorRef.current) {
       setSelectedIds(new Set(rangeIds(visiblePhotos, anchorRef.current, id)));
@@ -442,36 +426,17 @@ export default function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
-        if (!activeBatch) return;
+        if (!activePath) return;
         // Don't hijack select-all inside text fields.
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
         e.preventDefault();
-        setSelectedIds(new Set(visiblePhotos.map((p) => p.id)));
+        setSelectedIds(new Set(visiblePhotos.map((p) => p.path)));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeBatch, visiblePhotos]);
-
-  // Ctrl+Tab / Ctrl+Shift+Tab cycle through the folder tree (DFS, wrap around).
-  // Selection + queue persist (combine across folders), same as clicking a folder.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== "Tab") return;
-      if (!folderTree) return;
-      const paths: string[] = [];
-      const walk = (n: FolderNode) => { paths.push(n.path); n.children.forEach(walk); };
-      walk(folderTree);
-      if (paths.length < 2) return;
-      e.preventDefault();
-      const idx = paths.findIndex((p) => p === activeBatch?.source_path);
-      const nextIdx = e.shiftKey ? (idx - 1 + paths.length) % paths.length : (idx + 1) % paths.length;
-      selectFolder(paths[nextIdx]);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [folderTree, activeBatch, event]);
+  }, [activePath, visiblePhotos]);
 
   // Derive uniform qty across the targeted photos — 0 if empty or mixed values.
   const targetQtys = targetIds.map((id) => photoQueue[id] ?? 0);
@@ -489,11 +454,11 @@ export default function App() {
         if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
         if (visiblePhotos.length === 0) return;
         e.preventDefault();
-        const idx = selected ? visiblePhotos.findIndex((p) => p.id === selected.id) : -1;
+        const idx = selected ? visiblePhotos.findIndex((p) => p.path === selected.path) : -1;
         const select = (photo: Photo) => {
           setSelected(photo);
-          if (!lightboxOpen) setSelectedIds(new Set([photo.id]));
-          anchorRef.current = photo.id;
+          if (!lightboxOpen) setSelectedIds(new Set([photo.path]));
+          anchorRef.current = photo.path;
         };
         if (idx < 0) { select(visiblePhotos[0]); return; }
         const cols = colCountRef.current;
@@ -546,10 +511,10 @@ export default function App() {
     });
   }
 
-  // Set the queued qty for the targeted photos (selection, or whole batch when
+  // Set the queued qty for the targeted photos (selection, or whole folder when
   // nothing is selected); other photos' quantities are left untouched.
   function handleSetAllQty(qty: number) {
-    if (!activeBatch) return;
+    if (!activePath) return;
     setPhotoQueue((prev) => {
       const next = { ...prev };
       for (const id of targetIds) {
@@ -561,27 +526,23 @@ export default function App() {
   }
 
   // Set (or clear, with `null`) a photo's orientation override and mirror the
-  // change into event/activeBatch/selected state.
-  async function setOrientation(photoId: string, orientation: Orientation | null) {
+  // change into event/selected state.
+  async function setOrientation(photoPath: string, orientation: Orientation | null) {
     if (!event) return;
     try {
       if (orientation) {
-        await invoke("set_orientation_override", { eventId: event.id, photoId, orientation });
+        await invoke("set_orientation_override", { eventId: event.id, photoPath, orientation });
       } else {
-        await invoke("clear_orientation_override", { eventId: event.id, photoId });
+        await invoke("clear_orientation_override", { eventId: event.id, photoPath });
       }
-      const updatePhoto = (p: Photo): Photo =>
-        p.id === photoId ? { ...p, orientation_override: orientation } : p;
-      const updatedEvent = {
-        ...event,
-        batches: event.batches.map((b) => ({ ...b, photos: b.photos.map(updatePhoto) })),
-      };
-      setEvent(updatedEvent);
-      if (activeBatch) {
-        const refreshedBatch = updatedEvent.batches.find((b) => b.id === activeBatch.id);
-        if (refreshedBatch) setActiveBatch(refreshedBatch);
+      const existing = event.photos[photoPath];
+      if (existing) {
+        setEvent({
+          ...event,
+          photos: { ...event.photos, [photoPath]: { ...existing, orientation_override: orientation } },
+        });
       }
-      setSelected((prev) => (prev?.id === photoId ? updatePhoto(prev) : prev));
+      setSelected((prev) => (prev?.path === photoPath ? { ...prev, orientation_override: orientation } : prev));
       // Orientation changes the crop ratio/frame, so force the preview to refetch.
       setFrameNonce((n) => n + 1);
     } catch (e) {
@@ -592,19 +553,18 @@ export default function App() {
   // After exporting: optimistically bump counts for processed photos and clear
   // only those from the queue (`queue` is the effective, possibly selection-scoped set).
   function handleExported(destination: "print" | "save", queue: Record<string, number>) {
-    const bump = (p: Photo): Photo => {
-      const qty = queue[p.id] ?? 0;
-      if (!qty) return p;
-      return destination === "print"
-        ? { ...p, print_count: p.print_count + qty }
-        : { ...p, save_count: p.save_count + qty };
-    };
-    setEvent((prev) =>
-      prev
-        ? { ...prev, batches: prev.batches.map((b) => ({ ...b, photos: b.photos.map(bump) })) }
-        : prev
-    );
-    setActiveBatch((prev) => (prev ? { ...prev, photos: prev.photos.map(bump) } : prev));
+    setEvent((prev) => {
+      if (!prev) return prev;
+      const photos = { ...prev.photos };
+      for (const [path, qty] of Object.entries(queue)) {
+        const p = photos[path];
+        if (!p || !qty) continue;
+        photos[path] = destination === "print"
+          ? { ...p, print_count: p.print_count + qty }
+          : { ...p, save_count: p.save_count + qty };
+      }
+      return { ...prev, photos };
+    });
     setPhotoQueue((prev) => {
       const next = { ...prev };
       for (const id of Object.keys(queue)) delete next[id];
@@ -613,14 +573,14 @@ export default function App() {
   }
 
   // Lightbox prev/next over the currently visible photos.
-  const selIdx = selected ? visiblePhotos.findIndex((p) => p.id === selected.id) : -1;
+  const selIdx = selected ? visiblePhotos.findIndex((p) => p.path === selected.path) : -1;
   function goAdjacent(dir: -1 | 1) {
     if (selIdx < 0) return;
     const next = visiblePhotos[selIdx + dir];
     if (!next) return;
     setSelected(next);
-    setSelectedIds(new Set([next.id]));
-    anchorRef.current = next.id;
+    setSelectedIds(new Set([next.path]));
+    anchorRef.current = next.path;
   }
 
   return (
@@ -640,8 +600,8 @@ export default function App() {
         <>
           <div className="flex flex-1 overflow-hidden">
             <Sidebar
-              tree={folderTree}
-              activePath={activeBatch?.source_path ?? null}
+              rootPath={event.root_path}
+              activePath={activePath}
               hideEmpty={hideEmpty}
               onSelectFolder={(p) => selectFolder(p)}
             />
@@ -659,7 +619,7 @@ export default function App() {
               <div className="flex flex-1 overflow-hidden">
                 <Gallery
                   photos={visiblePhotos}
-                  selectedId={selected?.id ?? null}
+                  selectedId={selected?.path ?? null}
                   selectedIds={selectedIds}
                   onPhotoClick={handlePhotoClick}
                   onPhotoDoubleClick={handlePhotoDoubleClick}
@@ -673,7 +633,7 @@ export default function App() {
             </div>
           </div>
 
-          {activeBatch && activeBatch.photos.length > 0 && (
+          {folderPhotos.length > 0 && (
             <ActionBar
               queuedTotal={queuedTotal}
               visibleCount={visiblePhotos.length}
@@ -681,7 +641,7 @@ export default function App() {
               allQty={allQty}
               scanning={scanning}
               scanProgress={scanProgress}
-              exportBatchCount={exportBatchCount}
+              exportFolderCount={exportFolderCount}
               exportThumbs={exportThumbs}
               onSetAllQty={handleSetAllQty}
               onScanFaces={scanFaces}
@@ -702,10 +662,10 @@ export default function App() {
               onNext={() => goAdjacent(1)}
               hasPrev={selIdx > 0}
               hasNext={selIdx >= 0 && selIdx < visiblePhotos.length - 1}
-              qty={photoQueue[selected.id] ?? 0}
+              qty={photoQueue[selected.path] ?? 0}
               onQtyDelta={adjustQty}
               photos={visiblePhotos}
-              onJump={(p) => { setSelected(p); setSelectedIds(new Set([p.id])); anchorRef.current = p.id; }}
+              onJump={(p) => { setSelected(p); setSelectedIds(new Set([p.path])); anchorRef.current = p.path; }}
             />
           )}
         </>
