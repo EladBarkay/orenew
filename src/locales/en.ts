@@ -66,6 +66,15 @@ const en = {
     sortSize: "File size",
     sortAsc: "Ascending",
     sortDesc: "Descending",
+    modeGallery: "Gallery",
+    modeCanvas: "Canvas",
+  },
+
+  canvasView: {
+    needPresets: "Add a frame preset and a canvas preset to preview export canvases.",
+    queueToPreview: "Queue copies in the gallery to preview the export canvases.",
+    pageCount_one: "{{count}} canvas",
+    pageCount_other: "{{count}} canvases",
   },
 
   actionBar: {

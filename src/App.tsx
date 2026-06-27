@@ -14,6 +14,7 @@ import { Modal } from "./components/ui";
 import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
 import ViewControls from "./components/ViewControls";
+import CanvasPreview from "./components/CanvasPreview";
 import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
@@ -32,6 +33,7 @@ const folderOf = (photoPath: string) => parentDir(photoPath);
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
+export type ViewMode = "gallery" | "canvas";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -57,6 +59,7 @@ export default function App() {
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
+  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [hideEmpty, setHideEmpty] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -607,6 +610,8 @@ export default function App() {
             />
             <div className="flex flex-col flex-1 overflow-hidden">
               <ViewControls
+                viewMode={viewMode}
+                onSetViewMode={(m) => { if (m === "canvas") clearSelection(); setViewMode(m); }}
                 hideEmpty={hideEmpty}
                 onToggleHideEmpty={() => setHideEmpty((v) => !v)}
                 cellSize={cellSize}
@@ -617,18 +622,22 @@ export default function App() {
                 onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
               />
               <div className="flex flex-1 overflow-hidden">
-                <Gallery
-                  photos={visiblePhotos}
-                  selectedId={selected?.path ?? null}
-                  selectedIds={selectedIds}
-                  onPhotoClick={handlePhotoClick}
-                  onPhotoDoubleClick={handlePhotoDoubleClick}
-                  onBackgroundClick={clearSelection}
-                  photoQueue={photoQueue}
-                  onQtyDelta={adjustQty}
-                  cellSize={cellSize}
-                  onColCountChange={(n) => { colCountRef.current = n; }}
-                />
+                {viewMode === "canvas" ? (
+                  <CanvasPreview event={event} photoQueue={photoQueue} />
+                ) : (
+                  <Gallery
+                    photos={visiblePhotos}
+                    selectedId={selected?.path ?? null}
+                    selectedIds={selectedIds}
+                    onPhotoClick={handlePhotoClick}
+                    onPhotoDoubleClick={handlePhotoDoubleClick}
+                    onBackgroundClick={clearSelection}
+                    photoQueue={photoQueue}
+                    onQtyDelta={adjustQty}
+                    cellSize={cellSize}
+                    onColCountChange={(n) => { colCountRef.current = n; }}
+                  />
+                )}
               </div>
             </div>
           </div>

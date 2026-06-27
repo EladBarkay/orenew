@@ -67,6 +67,17 @@ const he = {
     sortSize: "גודל קובץ",
     sortAsc: "סדר עולה",
     sortDesc: "סדר יורד",
+    modeGallery: "גלריה",
+    modeCanvas: "קנבס",
+  },
+
+  canvasView: {
+    needPresets: "הוסיפו קבוצת מסגרות ותבנית קנבס כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
+    queueToPreview: "הגדירו עותקים בגלריה כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
+    pageCount_one: "קנבס אחד",
+    pageCount_two: "שני קנבסים",
+    pageCount_many: "{{count}} קנבסים",
+    pageCount_other: "{{count}} קנבסים",
   },
 
   actionBar: {
