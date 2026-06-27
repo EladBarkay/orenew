@@ -8,7 +8,7 @@ export type CropRect = {
 };
 
 export type Photo = {
-  id: string;
+  // A photo's identity is its absolute path — there is no separate id.
   path: string;
   width: number;
   height: number;
@@ -24,11 +24,13 @@ export type Photo = {
   modified: number;
 };
 
-export type PhotoBatch = {
-  id: string;
+// One immediate subfolder in the lazy sidebar tree. `photo_count` is direct
+// image files; `has_subfolders` drives the expand chevron.
+export type FolderEntry = {
   name: string;
-  source_path: string;
-  photos: Photo[];
+  path: string;
+  photo_count: number;
+  has_subfolders: boolean;
 };
 
 export type FramePreset = {
@@ -77,7 +79,9 @@ export type OrenewEvent = {
   id: string;
   name: string;
   root_path: string | null;
-  batches: PhotoBatch[];
+  // Per-photo state keyed by absolute file path. No folder grouping — the folder
+  // structure is read live from disk; this holds only browsed photos.
+  photos: Record<string, Photo>;
   frame_presets: FramePreset[];
   canvas_presets: CanvasPreset[];
   output_folder: string | null;

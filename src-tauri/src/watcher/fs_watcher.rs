@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// Watches directories and calls `on_changed(path)` for each file that is
 /// created, modified, or deleted. Emits the full file path so the consumer can
-/// distinguish batch photos from frame PNGs. Deduplicates per event.
+/// distinguish photo files from frame PNGs. Deduplicates per event.
 pub struct FsWatcher {
     watcher: RecommendedWatcher,
 }

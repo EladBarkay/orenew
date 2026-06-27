@@ -17,7 +17,7 @@ pub fn generate_framed_preview(photo: &Photo, preset: Option<&FramePreset>) -> R
         Some(preset) => {
             let orient = photo.effective_orientation();
             // Portrait photos crop to the inverted ratio so the preview matches export.
-            let ratio = crate::photo::batch::orientation_ratio(preset, orient);
+            let ratio = crate::photo::compose::orientation_ratio(preset, orient);
             let crop_rect = photo
                 .crop_override
                 .unwrap_or_else(|| crop::compute_crop_rect(loaded.width(), loaded.height(), ratio));

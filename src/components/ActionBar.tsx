@@ -10,8 +10,8 @@ type Props = {
   allQty: number;
   scanning: boolean;
   scanProgress: { done: number; total: number } | null;
-  /** How many distinct batches contribute to the (effective) queue. */
-  exportBatchCount: number;
+  /** How many distinct folders contribute to the (effective) queue. */
+  exportFolderCount: number;
   /** Up to 3 thumbnails of queued photos, shown stacked next to Export. */
   exportThumbs: { path: string; hash: string }[];
   onSetAllQty: (qty: number) => void;
@@ -28,7 +28,7 @@ type Props = {
  */
 export default function ActionBar({
   queuedTotal, visibleCount, selectedCount, allQty, scanning, scanProgress,
-  exportBatchCount, exportThumbs,
+  exportFolderCount, exportThumbs,
   onSetAllQty, onScanFaces, onClearSelection, onExport,
 }: Props) {
   const { t } = useTranslation();
@@ -81,8 +81,8 @@ export default function ActionBar({
             ))}
           </div>
         )}
-        {exportBatchCount > 1 && (
-          <span className="text-xs text-neutral-400 tabular-nums">{t("actionBar.fromBatches", { n: exportBatchCount })}</span>
+        {exportFolderCount > 1 && (
+          <span className="text-xs text-neutral-400 tabular-nums">{t("actionBar.fromFolders", { n: exportFolderCount })}</span>
         )}
         <button
           onClick={onExport}

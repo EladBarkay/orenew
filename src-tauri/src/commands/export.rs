@@ -1,5 +1,5 @@
 use crate::commands::IntoTauri;
-use crate::photo::batch::{prepare_frames, PreparedFrames};
+use crate::photo::compose::{prepare_frames, PreparedFrames};
 use crate::project::model::{CanvasPreset, Event, FramePreset, Photo};
 use crate::AppState;
 use rayon::prelude::*;
@@ -74,21 +74,22 @@ fn expand_by_quantity(photos: &[Photo], qty: impl Fn(&Photo) -> u32) -> Vec<Phot
         .collect()
 }
 
-/// Collect photos in canonical event order (batch order → photo order within batch)
-/// for the given quantity map. Keys of `quantities` determine which photos are included.
-fn collect_selected(event: &Event, quantities: &HashMap<Uuid, u32>) -> Vec<Photo> {
-    event
-        .batches
-        .iter()
-        .flat_map(|b| &b.photos)
-        .filter(|p| quantities.contains_key(&p.id))
+/// Collect the queued photos sorted by path (stable output order). Keys of
+/// `quantities` determine which photos are included.
+fn collect_selected(event: &Event, quantities: &HashMap<PathBuf, u32>) -> Vec<Photo> {
+    let mut photos: Vec<Photo> = event
+        .photos
+        .values()
+        .filter(|p| quantities.contains_key(&p.path))
         .cloned()
-        .collect()
+        .collect();
+    photos.sort_by(|a, b| a.path.cmp(&b.path));
+    photos
 }
 
 /// Everything a save/print run needs once the event is loaded — shared by both
-/// `save_batch` and `print_photos`, which differ only in how they emit output.
-struct PreparedBatch {
+/// `save_photos` and `print_photos`, which differ only in how they emit output.
+struct PreparedExport {
     photos: Vec<Photo>,
     canvas_preset: CanvasPreset,
     frame_preset: FramePreset,
@@ -100,20 +101,20 @@ struct PreparedBatch {
 
 /// Resolve presets, expand the quantity map (using `default_qty` for photos with
 /// no explicit entry), validate non-empty, and load+prepare the frames once.
-fn prepare_batch(
+fn prepare_export(
     event: &Event,
-    quantities: &HashMap<Uuid, u32>,
+    quantities: &HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     default_qty: u32,
     watermark: bool,
-) -> Result<PreparedBatch, String> {
+) -> Result<PreparedExport, String> {
     let canvas_preset = event.find_canvas_preset(canvas_preset_id)?.clone();
     let frame_preset = event.find_frame_preset(frame_preset_id)?.clone();
 
     let selected = collect_selected(event, quantities);
     let photos = expand_by_quantity(&selected, |p| {
-        quantities.get(&p.id).copied().unwrap_or(default_qty)
+        quantities.get(&p.path).copied().unwrap_or(default_qty)
     });
     if photos.is_empty() {
         return Err("No photos queued — set quantities on gallery photos first".into());
@@ -123,7 +124,7 @@ fn prepare_batch(
     let slot_h = canvas_preset.slot_height();
     let frames = load_and_prepare_frames(&frame_preset, slot_w, slot_h)?;
 
-    Ok(PreparedBatch {
+    Ok(PreparedExport {
         photos,
         canvas_preset,
         frame_preset,
@@ -137,22 +138,20 @@ fn prepare_batch(
 /// Add each photo's queued quantity to one of its counters (`field` selects which).
 fn bump_counts(
     event: &mut Event,
-    quantities: &HashMap<Uuid, u32>,
+    quantities: &HashMap<PathBuf, u32>,
     field: fn(&mut Photo) -> &mut u32,
 ) {
-    for batch in &mut event.batches {
-        for photo in &mut batch.photos {
-            if let Some(&qty) = quantities.get(&photo.id) {
-                *field(photo) += qty;
-            }
+    for (path, photo) in &mut event.photos {
+        if let Some(&qty) = quantities.get(path) {
+            *field(photo) += qty;
         }
     }
 }
 
 #[tauri::command]
-pub async fn save_batch(
+pub async fn save_photos(
     event_id: Uuid,
-    quantities: HashMap<Uuid, u32>,
+    quantities: HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     app: tauri::AppHandle,
@@ -160,7 +159,7 @@ pub async fn save_batch(
 ) -> Result<(), String> {
     let event = state.store.load(event_id).tauri()?;
 
-    let PreparedBatch {
+    let PreparedExport {
         photos,
         canvas_preset,
         frame_preset,
@@ -168,7 +167,7 @@ pub async fn save_batch(
         watermark,
         slot_w,
         slot_h,
-    } = prepare_batch(
+    } = prepare_export(
         &event,
         &quantities,
         frame_preset_id,
@@ -205,7 +204,7 @@ pub async fn save_batch(
             let framed: Vec<_> = chunk
                 .iter()
                 .filter_map(|photo| {
-                    crate::photo::batch::frame_photo_for_canvas(
+                    crate::photo::compose::frame_photo_for_canvas(
                         photo,
                         &frame_preset,
                         slot_w,
@@ -281,13 +280,13 @@ pub async fn save_batch(
 #[tauri::command]
 pub async fn print_photos(
     event_id: Uuid,
-    quantities: HashMap<Uuid, u32>,
+    quantities: HashMap<PathBuf, u32>,
     frame_preset_id: Uuid,
     canvas_preset_id: Uuid,
     state: State<'_, AppState>,
 ) -> Result<PrintResult, String> {
     let mut event = state.store.load(event_id).tauri()?;
-    let PreparedBatch {
+    let PreparedExport {
         photos,
         canvas_preset,
         frame_preset,
@@ -295,7 +294,7 @@ pub async fn print_photos(
         watermark,
         slot_w,
         slot_h,
-    } = prepare_batch(
+    } = prepare_export(
         &event,
         &quantities,
         frame_preset_id,
@@ -308,7 +307,7 @@ pub async fn print_photos(
         photos
             .par_iter()
             .filter_map(|p| {
-                crate::photo::batch::frame_photo_for_canvas(
+                crate::photo::compose::frame_photo_for_canvas(
                     p,
                     &frame_preset,
                     slot_w,

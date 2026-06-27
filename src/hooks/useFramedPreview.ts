@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export function useFramedPreview(
   eventId: string | null,
-  photoId: string | null,
+  photoPath: string | null,
   presetId: string | null,
   nonce: number = 0,
   // Changes when the photo's bytes change on disk, forcing a re-fetch.
@@ -12,7 +12,7 @@ export function useFramedPreview(
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!eventId || !photoId) {
+    if (!eventId || !photoPath) {
       setSrc(null);
       return;
     }
@@ -20,7 +20,7 @@ export function useFramedPreview(
     let cancelled = false;
 
     // `presetId === null` → backend returns the raw full-photo preview.
-    invoke<number[]>("get_framed_preview", { eventId, photoId, presetId })
+    invoke<number[]>("get_framed_preview", { eventId, photoPath, presetId })
       .then((bytes) => {
         if (cancelled) return;
         const url = URL.createObjectURL(
@@ -38,7 +38,7 @@ export function useFramedPreview(
     return () => {
       cancelled = true;
     };
-  }, [eventId, photoId, presetId, nonce, contentHash]);
+  }, [eventId, photoPath, presetId, nonce, contentHash]);
 
   return src;
 }

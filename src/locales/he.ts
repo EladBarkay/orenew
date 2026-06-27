@@ -22,14 +22,11 @@ const he = {
 
   app: {
     loading: "טוען…",
-    loadingBatch: "טוען נגלה…",
     error: "שגיאה: {{message}}",
     openToBegin: "פתח אירוע כדי להתחיל",
     deleteEventConfirm:
       'למחוק את האירוע "{{name}}"? פעולה זו מסירה את כל ההגדרות השמורות ואינה ניתנת לביטול.',
     deleteEventTitle: "מחיקת אירוע",
-    removeBatchConfirm: 'להסיר את הנגלה "{{name}}" מהאירוע? הקבצים לא יימחקו.',
-    removeBatchTitle: "הסרת נגלה",
     deleteCanvasConfirm: 'למחוק את תבנית הקנבס "{{name}}"?',
     deleteCanvasTitle: "מחיקת תבנית קנבס",
     deleteFrameConfirm: 'למחוק את קבוצת המסגרות "{{name}}"? קובצי ה-PNG לא יימחקו.',
@@ -74,17 +71,13 @@ const he = {
 
   actionBar: {
     clear: "נקה",
-    queuedSummary: "{{photos}} תמונות בנגלה זו · {{copies}} עותקים פעילים",
-    fromBatches: "מ-{{n}} נגלות",
+    queuedSummary: "{{photos}} תמונות בתיקייה זו · {{copies}} עותקים פעילים",
+    fromFolders: "מ-{{n}} תיקיות",
   },
 
   sidebar: {
-    batches: "נגלות",
     add: "+ הוספה",
-    noBatches: "אין נגלות —",
-    addFolder: "הוסף תיקייה",
-    path: "נתיב: {{path}}",
-    removeBatch: "הסרת נגלה",
+    revealFolder: "לחיצה כפולה לפתיחה במנהל הקבצים",
     frames: "מסגרות",
     noFrames: "אין מסגרות —",
     addOne: "הוסף אחת",
@@ -97,7 +90,7 @@ const he = {
   },
 
   gallery: {
-    noPhotos: "אין תמונות בנגלה זו",
+    noPhotos: "אין תמונות בתיקייה זו",
   },
 
   preview: {

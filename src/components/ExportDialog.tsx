@@ -102,7 +102,7 @@ export default function ExportDialog({
         onExported("print", photoQueue);
       } else {
         clearSave();
-        await invoke("save_batch", {
+        await invoke("save_photos", {
           eventId: event.id,
           quantities,
           framePresetId: frameId,

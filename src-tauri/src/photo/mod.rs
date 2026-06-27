@@ -1,4 +1,4 @@
-pub mod batch;
+pub mod compose;
 pub mod crop;
 pub mod encode;
 pub mod frame;
