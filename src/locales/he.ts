@@ -73,6 +73,8 @@ const he = {
 
   canvasView: {
     needPresets: "הוסיפו קבוצת מסגרות ותבנית קנבס כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
+    addFramePreset: "הוספת קבוצת מסגרות",
+    addCanvasPreset: "הוספת תבנית קנבס",
     queueToPreview: "הגדירו עותקים בגלריה כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
     pageCount_one: "קנבס אחד",
     pageCount_two: "שני קנבסים",

@@ -343,10 +343,15 @@ export default function App() {
 
   // Bulk actions act on the selection, or the whole folder when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.path);
-  // Process/totals only count the targeted photos.
-  const effectiveQueue = selectedIds.size > 0
-    ? Object.fromEntries(Object.entries(photoQueue).filter(([path]) => selectedIds.has(path)))
-    : photoQueue;
+  // Process/totals only count the targeted photos: the selection if any, else the
+  // current folder. The queue is global across browsed folders, so scope it here —
+  // export/preview must never pull in photos from other (sub)folders.
+  const folderPaths = new Set(folderPhotos.map((p) => p.path));
+  const effectiveQueue = Object.fromEntries(
+    Object.entries(photoQueue).filter(([path]) =>
+      selectedIds.size > 0 ? selectedIds.has(path) : folderPaths.has(path)
+    )
+  );
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
 
   // Export indicator: how many folders contribute to the (effective) queue + a few
@@ -611,7 +616,7 @@ export default function App() {
             <div className="flex flex-col flex-1 overflow-hidden">
               <ViewControls
                 viewMode={viewMode}
-                onSetViewMode={(m) => { if (m === "canvas") clearSelection(); setViewMode(m); }}
+                onSetViewMode={setViewMode}
                 hideEmpty={hideEmpty}
                 onToggleHideEmpty={() => setHideEmpty((v) => !v)}
                 cellSize={cellSize}
@@ -623,7 +628,12 @@ export default function App() {
               />
               <div className="flex flex-1 overflow-hidden">
                 {viewMode === "canvas" ? (
-                  <CanvasPreview event={event} photoQueue={photoQueue} />
+                  <CanvasPreview
+                    event={event}
+                    photoQueue={effectiveQueue}
+                    onAddFrame={() => setAddingFrame(true)}
+                    onAddCanvas={() => setAddingCanvas(true)}
+                  />
                 ) : (
                   <Gallery
                     photos={visiblePhotos}
