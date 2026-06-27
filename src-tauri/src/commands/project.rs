@@ -8,15 +8,14 @@ use uuid::Uuid;
 
 #[tauri::command]
 pub async fn open_event(path: PathBuf, state: State<'_, AppState>) -> Result<Event, String> {
-    // Resume by root_path first, then fall back to legacy batch-path lookup
+    // Resume by root_path first, then fall back to a legacy source-folder lookup
     if let Some(event) = state.store.find_by_root_path(&path).tauri()? {
         return Ok(event);
     }
     if let Some(event) = state.store.find_by_source_path(&path).tauri()? {
         return Ok(event);
     }
-    // New event — create record only, no auto-batch.
-    // The user adds batches manually via the "+ Add" button.
+    // New event — create the record only; folders are browsed from the sidebar tree.
     let folder_name = path
         .file_name()
         .unwrap_or_default()
@@ -194,12 +193,6 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
     Ok(photos)
 }
 
-/// Merge a re-scanned photo list into the existing batch, preserving user data.
-/// - Same path + same hash → keep existing (print_count, overrides)
-/// - Same path + changed hash → keep id + orientation override; reset print_count + crop_override
-/// - New path → add
-/// - Path no longer present → drop
-///
 /// Merge a folder's freshly-scanned photos into the event's path-keyed map,
 /// preserving user data:
 /// - Same path + same hash → keep stored entry, refresh file metadata

@@ -1,4 +1,4 @@
-use crate::commands::batch::run_bounded;
+use crate::commands::export::run_bounded;
 use crate::commands::IntoTauri;
 use crate::AppState;
 use rayon::prelude::*;

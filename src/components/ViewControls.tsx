@@ -18,7 +18,7 @@ const MAX_CELL = 280;
 
 /**
  * Slim gallery view-controls bar (sort, grid zoom, hide-empty). Extracted from
- * the old BatchTabs strip; folder navigation now lives in the sidebar tree.
+ * the old tab strip; folder navigation now lives in the sidebar tree.
  * `hideEmpty` hides folders with no photos in the tree and cards with no copies
  * in the grid.
  */

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Orenew** is a cross-platform desktop application for event photographers to batch-apply custom decorative frames to photos for printing and magnet production. The photographer works one event at a time; each event has multiple photo batches (one per SD card dump), per-event frame PNGs, canvas presets for print/export, and a fixed output folder.
+**Orenew** is a cross-platform desktop application for event photographers to batch-apply custom decorative frames to photos for printing and magnet production. The photographer works one event at a time; an event is a root folder browsed as a filesystem tree (one subfolder per SD card dump, etc.), with per-event frame PNGs, canvas presets for print/export, and a fixed output folder.
 
 ## Tech Stack
 
@@ -33,19 +33,21 @@ The photographer's source folder is **never modified**. All app state lives in i
   license.json
 ```
 
-When opening a folder, the app matches it against `source_path` in existing `orenew.json` files to resume, or creates a new event.
+When opening a folder, the app matches it against `root_path` in existing `orenew.json` files (or any stored photo's folder) to resume, or creates a new event. The opened folder is the event root; subfolders are browsed from the sidebar tree.
 
 ### Core Data Model
 
-- **Event** — top-level: name, list of `PhotoBatch`es, active `FramePreset`, `CanvasPreset`s, output folder path
-- **PhotoBatch** — absolute `source_path` to photographer's folder, list of `Photo`s
-- **Photo** — path, EXIF orientation, user overrides (orientation, crop), `print_count`, `save_count`, `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes; `save_count` persists)
+There is **no batch grouping**: the folder structure is read live from disk, and the event persists only the photos the user has browsed to, keyed by absolute path. A photo's identity is its path (no separate id).
+
+- **Event** — top-level: name, `root_path`, `photos: HashMap<PathBuf, Photo>` (browsed photos), active `FramePreset`, `CanvasPreset`s, output folder path
+- **Photo** — `path` (identity), EXIF orientation, user overrides (orientation, crop), `print_count`, `save_count`, `copies` (queued qty), `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes; `save_count` persists)
+- **FolderEntry** — one lazy sidebar node: name, path, direct `photo_count`, `has_subfolders`
 - **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio (crop is always centered)
 - **CanvasPreset** — pixel dimensions, photos-per-canvas, DPI, grid layout (e.g. 2400×1600, 2-up)
 
 Frames are per-event PNGs provided by the photographer (no bundled frames). Paths stored as absolute paths.
 
-### Batch Processing Pipeline
+### Export Processing Pipeline
 
 Export/print runs canvases in parallel on a dedicated 4-thread rayon pool (memory ceiling).
 Frames are prepared **once** per run via `prepare_frames()` (per-orientation placement dims,
@@ -60,15 +62,15 @@ aspect preserved, RGBA8). Per photo, `frame_photo_for_canvas()`:
 7. Compositor centers the result in its slot — white letterbox, **never stretched**
 8. `write_print_ready(framed, out_path)` → RGB JPEG q95 at 300 DPI
 
-Errors per photo: log and skip; batch continues. Progress emitted via Tauri events.
+Errors per photo: log and skip; the run continues. Progress emitted via Tauri events.
 Perf guard: `cargo test --release -- --ignored perf` asserts <100ms/photo (24MP source).
 Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 
 ### Preview Pipeline
 
-- Thumbnails (256px) generated async at batch open, cached to `{app_cache}/thumbs/{sha256}.jpg`
+- Thumbnails (256px) generated async at folder open, cached to `{app_cache}/thumbs/{sha256}.jpg`
 - Virtual list (react-window) in gallery; only visible thumbnails rendered
-- Full framed preview: on-demand Rust, cached per `(photo_id, preset_id)` (preset `None` → keyed under nil UUID, returns the raw full photo), returned as bytes
+- Full framed preview: on-demand Rust, cached per `(photo_path, preset_id)` (preset `None` → keyed under nil UUID, returns the raw full photo), returned as bytes
 
 ### Print / Export
 
@@ -78,7 +80,7 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 
 ### File System Watcher
 
-`notify` watches each batch's source folder + all frame PNG paths:
+`notify` watches each browsed folder (non-recursive) + all frame PNG paths:
 - New photo → auto-add, generate thumbnail
 - Photo/XMP change → recompute `content_hash`; if changed: reset `print_count`, invalidate thumbnail
 - Frame PNG change → invalidate framed previews using that frame, UI refreshes immediately
@@ -112,10 +114,10 @@ orenew/
 │   │   ├── constants.rs       # Tauri event channel names (fs-changed, save-progress, face-scan-progress, …)
 │   │   ├── json_store.rs      # atomic JSON load/save (tmp-then-rename) for session/entitlement caches
 │   │   ├── commands/          # Thin Tauri IPC handlers
-│   │   │   ├── project.rs     # open/create/save/delete event, batches, refresh_batch, sync_watches
+│   │   │   ├── project.rs     # open/create/save/delete event, list_folder, select_folder, sync_watches
 │   │   │   ├── gallery.rs     # get_thumbnail, get_frame_thumbnail, get_framed_preview, overrides (preview IPC lives here)
-│   │   │   ├── batch.rs       # save_batch, print_photos (Windows print dialog / folder fallback; watermark per tier)
-│   │   │   ├── faces.rs       # count_faces_in_batch — rustface (SeetaFace2), embedded model [tests]
+│   │   │   ├── export.rs      # save_photos, print_photos (Windows print dialog / folder fallback; watermark per tier)
+│   │   │   ├── faces.rs       # count_faces — rustface (SeetaFace2), embedded model [tests]
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
 │   │   │   └── auth.rs        # establish_session, get_entitlement, refresh_entitlement, disconnect_device, list_devices, current_device_hash, sign_out
@@ -126,7 +128,7 @@ orenew/
 │   │   │   ├── imageops.rs    # crop_and_resize() + overlay_frame() — fast path + simple fallback per fn [tests]
 │   │   │   ├── frame.rs       # apply_frame_overlay() — load frame PNG + overlay_frame() (preview path) [tests]
 │   │   │   ├── encode.rs      # write_print_ready() — RGB JPEG q95, 300 DPI JFIF
-│   │   │   └── batch.rs       # frame_photo_for_canvas() (save/print per-photo path)
+│   │   │   └── compose.rs     # frame_photo_for_canvas() (save/print per-photo path)
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px; preset=None → raw full photo, no crop/frame)
@@ -136,7 +138,8 @@ orenew/
 ├── src/
 │   ├── components/            # flat (no nested folders)
 │   │   ├── Toolbar.tsx        # slim top band: logo, event name, open/delete, settings/tier
-│   │   ├── BatchTabs.tsx      # horizontal batch tab strip (drag-reorder) + view controls (grid size, hide-empty)
+│   │   ├── Sidebar.tsx        # Lightroom-style filesystem folder tree (lazy per-level load)
+│   │   ├── ViewControls.tsx   # slim view-controls bar (grid size, sort, hide-empty)
 │   │   ├── ActionBar.tsx      # sticky bottom band: queued totals + Export; swaps to bulk controls on selection
 │   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid (full-width)
 │   │   ├── PhotoCard.tsx      # thumbnail tile + qty stepper (bottom overlay, default 1)
@@ -163,7 +166,7 @@ Per-photo quantities are set via the qty stepper at the **bottom of each gallery
 All quantities live in `App.photoQueue: Record<string, number>` — a unified session-only state for
 both print and save. The toolbar **Export** button opens `ExportDialog` to pick a frame
 preset + canvas preset and a destination (Print or Save to path), then calls `print_photos` or
-`save_batch`. After completion, `print_count` / `save_count` on each Photo is bumped optimistically
+`save_photos`. After completion, `print_count` / `save_count` on each Photo is bumped optimistically
 and the queue is cleared.
 
 **Print** composes canvases, writes them to a temp dir, then dispatches by platform:
@@ -176,7 +179,7 @@ honest. `print_count` is optimistic — OS-dialog cancellation isn't detectable.
 ### Face detection (current)
 
 A "Suggest copies" action in `ActionBar` (bulk-selection mode) seeds per-photo export
-quantities from detected face counts. `count_faces_in_batch` (`commands/faces.rs`) uses
+quantities from detected face counts. `count_faces` (`commands/faces.rs`) uses
 the `rustface` crate (SeetaFace2) with the frontal model embedded via `include_bytes!`
 (`src-tauri/model/seeta_fd_frontal_v1.0.bin`). Each photo is downscaled to a 1024px
 longest side; the scan runs on the bounded rayon pool (one detector per worker) and
@@ -215,7 +218,7 @@ if the 14-day grace (from the token's `iat`) has lapsed it clears caches and emi
 `license-expired`. If this device lost its seat, it emits `device-limit` and drops
 to Free. `Entitlement::effective_tier()` enforces the grace ceiling at read time.
 
-`AppState::tier()` gates watermarking in `save_batch`/`print_photos`. Free tier
+`AppState::tier()` gates watermarking in `save_photos`/`print_photos`. Free tier
 composites a procedural diagonal-stripe watermark (no bundled asset/font).
 
 Supabase project config lives in a single repo-root `.env`
@@ -227,10 +230,11 @@ through `envPrefix: ["VITE_", "SUPABASE_"]`. A real shell env var overrides the
 ### File watcher (current)
 
 `FsWatcher` emits a Tauri `fs-changed` event with the changed file path. The frontend decides:
-a frame-PNG path → bump a preview nonce to refetch framed previews; otherwise refresh the owning
-batch via `refresh_batch` (which recomputes content hashes and resets `print_count` for changed
-photos in `merge_photos`). Thumbnails bust automatically because `useThumbnail` keys on
-`content_hash`. `sync_watches` re-establishes watches (batch folders + frame dirs) on event open.
+a frame-PNG path → bump a preview nonce to refetch framed previews; otherwise, if the change is in
+a browsed folder, re-scan it via `select_folder` (which recomputes content hashes and resets
+`print_count` for changed photos in `merge_folder`). Thumbnails bust automatically because
+`useThumbnail` keys on `content_hash`. `sync_watches` re-establishes watches (browsed folders +
+frame dirs, non-recursive) on event open.
 
 ### Internationalization (current)
 
@@ -254,7 +258,7 @@ preview divider drag mirrors its delta when `dir==="rtl"`. To add a language: cr
 | Target | Strategy |
 |---|---|
 | Gallery scroll <16ms | react-window virtual list; pre-cached thumbnails |
-| Thumbnail <200ms | Disk-cached at batch open |
+| Thumbnail <200ms | Disk-cached at folder open |
 | Framed preview <500ms | On-demand Rust, cached per (photo, preset) |
 | 100 photos <10s | rayon, max 4 in-flight (~70MB each decoded) |
 | Memory ceiling ~500MB | Bounded concurrency in rayon pool |

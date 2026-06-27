@@ -10,7 +10,7 @@ pub struct Event {
     /// The root folder of the event's filesystem tree; the sidebar navigates from here.
     #[serde(default)]
     pub root_path: Option<PathBuf>,
-    /// Per-photo state keyed by absolute file path. There is no batch grouping: the
+    /// Per-photo state keyed by absolute file path. There is no folder grouping: the
     /// folder structure is read live from disk, and this map holds only the photos
     /// the user has browsed to (their overrides, counts, queued copies).
     #[serde(default)]

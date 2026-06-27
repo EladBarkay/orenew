@@ -79,7 +79,7 @@ export type OrenewEvent = {
   id: string;
   name: string;
   root_path: string | null;
-  // Per-photo state keyed by absolute file path. No batch grouping — the folder
+  // Per-photo state keyed by absolute file path. No folder grouping — the folder
   // structure is read live from disk; this holds only browsed photos.
   photos: Record<string, Photo>;
   frame_presets: FramePreset[];

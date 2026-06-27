@@ -359,7 +359,7 @@ export default function App() {
 
   // Suggest per-photo export quantities = number of faces detected. Heavy, so
   // it runs on user click (not automatically) with a live progress count. Scans
-  // only the selected photos (or the whole batch if none selected) and merges the
+  // only the selected photos (or the whole folder if none selected) and merges the
   // result into the queue, leaving non-scanned photos' quantities untouched.
   async function scanFaces() {
     if (!event || !activePath) return;
