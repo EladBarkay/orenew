@@ -1,6 +1,6 @@
 [package]
 name = "orenew"
-version = "0.1.0"
+version = "1.0.0"
 description = "Orenew — batch photo framing for event photographers"
 authors = []
 edition = "2021"
