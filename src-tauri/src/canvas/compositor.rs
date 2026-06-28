@@ -2,19 +2,6 @@ use crate::project::model::CanvasPreset;
 use image::{DynamicImage, Rgb, RgbImage};
 use std::borrow::Cow;
 
-/// Tile framed images onto a blank canvas according to a `CanvasPreset`.
-/// `framed_images` must have exactly `preset.photos_per_canvas` entries.
-/// Returns one canvas per group of photos_per_canvas.
-pub fn compose_canvases(
-    framed_images: &[DynamicImage],
-    preset: &CanvasPreset,
-) -> Vec<DynamicImage> {
-    framed_images
-        .chunks(preset.photos_per_canvas as usize)
-        .map(|chunk| compose_one(chunk, preset))
-        .collect()
-}
-
 /// Compose a single canvas from a slice of framed images.
 pub fn compose_one(images: &[DynamicImage], preset: &CanvasPreset) -> DynamicImage {
     let slot_w = preset.slot_width();

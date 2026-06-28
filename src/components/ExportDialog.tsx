@@ -8,10 +8,6 @@ import { Modal, Field, Chip, PresetOption } from "./ui";
 import { EditIcon, TrashIcon } from "./icons";
 import ExportPreview from "./ExportPreview";
 
-type Destination = "print" | "save";
-
-type PrintResult = { count: number; dialog_opened: boolean; output_dir: string };
-
 type Props = {
   event: OrenewEvent;
   photoQueue: Record<string, number>;
@@ -20,7 +16,7 @@ type Props = {
   newCanvasId: string | null;
   onClose: () => void;
   onEventUpdate: (e: OrenewEvent) => void;
-  onExported: (destination: Destination, quantities: Record<string, number>) => void;
+  onExported: (quantities: Record<string, number>) => void;
   onAddFrame: () => void;
   onEditFrame: (p: FramePreset) => void;
   onDeleteFrame: (p: FramePreset) => void;
@@ -34,13 +30,12 @@ export default function ExportDialog({
   onAddFrame, onEditFrame, onDeleteFrame, onAddCanvas, onEditCanvas, onDeleteCanvas,
 }: Props) {
   const { t } = useTranslation();
-  const [destination, setDestination] = useState<Destination>("save");
-  const [frameId, setFrameId] = useState<string>(
-    event.active_frame_preset_id ?? event.frame_presets[0]?.id ?? ""
-  );
-  const [canvasId, setCanvasId] = useState<string>(
-    event.active_canvas_preset_id ?? event.canvas_presets[0]?.id ?? ""
-  );
+  // Default to the active preset, but only if it still exists (an active id can
+  // dangle after its preset was deleted); otherwise fall back to the first.
+  const validId = (active: string | null, list: { id: string }[]) =>
+    active && list.some((p) => p.id === active) ? active : list[0]?.id ?? "";
+  const [frameId, setFrameId] = useState<string>(() => validId(event.active_frame_preset_id, event.frame_presets));
+  const [canvasId, setCanvasId] = useState<string>(() => validId(event.active_canvas_preset_id, event.canvas_presets));
 
   // Auto-select a preset the user just created via an add-dialog.
   useEffect(() => {
@@ -51,7 +46,6 @@ export default function ExportDialog({
   }, [newCanvasId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [printResult, setPrintResult] = useState<PrintResult | null>(null);
   const { progress, result: saveResult, clear: clearSave } = useSaveProgress();
 
   const saveProcessedRef = useRef(false);
@@ -61,7 +55,7 @@ export default function ExportDialog({
   useEffect(() => {
     if (saveResult && !saveProcessedRef.current) {
       saveProcessedRef.current = true;
-      onExported("save", photoQueue);
+      onExported(photoQueue);
     }
   }, [saveResult, onExported, photoQueue]);
 
@@ -87,10 +81,7 @@ export default function ExportDialog({
     if (!frameId) { setError(t("export.selectFramePreset")); return; }
     if (!canvasId) { setError(t("export.selectCanvasPreset")); return; }
     if (totalQty === 0) { setError(t("export.noPhotosQueued")); return; }
-    if (destination === "save" && !event.output_folder) {
-      setError(t("export.setSavePathFirst"));
-      return;
-    }
+    if (!event.output_folder) { setError(t("export.setSavePathFirst")); return; }
     setError("");
     setBusy(true);
 
@@ -103,25 +94,14 @@ export default function ExportDialog({
     }
 
     try {
-      if (destination === "print") {
-        const res = await invoke<PrintResult>("print_photos", {
-          eventId: event.id,
-          quantities,
-          framePresetId: frameId,
-          canvasPresetId: canvasId,
-        });
-        setPrintResult(res);
-        onExported("print", photoQueue);
-      } else {
-        clearSave();
-        await invoke("save_photos", {
-          eventId: event.id,
-          quantities,
-          framePresetId: frameId,
-          canvasPresetId: canvasId,
-        });
-        // save-complete handled by useSaveProgress
-      }
+      clearSave();
+      await invoke("save_photos", {
+        eventId: event.id,
+        quantities,
+        framePresetId: frameId,
+        canvasPresetId: canvasId,
+      });
+      // save-complete handled by useSaveProgress
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -177,47 +157,8 @@ export default function ExportDialog({
     );
   }
 
-  // Print done
-  if (printResult !== null) {
-    return (
-      <Modal onClose={onClose}>
-        <div className="space-y-4 text-center py-2">
-          <p className="text-2xl">🖨</p>
-          <p className="font-medium text-neutral-100">
-            {printResult.dialog_opened
-              ? t("export.printDialogOpened", { count: printResult.count })
-              : t("export.printToFolder", { count: printResult.count })}
-          </p>
-          <div className="flex justify-center gap-2">
-            {!printResult.dialog_opened && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { openPath } = await import("@tauri-apps/plugin-opener");
-                    await openPath(printResult.output_dir);
-                  } catch (e) {
-                    alert(t("common.couldNotOpenFolder", { message: String(e) }));
-                  }
-                }}
-                className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 rounded"
-              >
-                {t("export.openFolder")}
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 bg-accent hover:bg-accent-hover rounded text-sm font-medium"
-            >
-              {t("common.done")}
-            </button>
-          </div>
-        </div>
-      </Modal>
-    );
-  }
-
   // Save in progress
-  if (busy && destination === "save" && progress) {
+  if (busy && progress) {
     return (
       <Modal onClose={() => {}}>
         <SaveProgressView progress={progress} />
@@ -232,14 +173,6 @@ export default function ExportDialog({
 
         <div className="flex gap-5 max-h-[65vh]">
         <div className="flex-1 min-w-0 space-y-4 overflow-y-auto pe-1">
-        {/* Destination toggle */}
-        <Field label={t("export.sendTo")}>
-          <div className="flex gap-1.5">
-            <Chip label={t("export.print")} active={destination === "print"} onClick={() => setDestination("print")} />
-            <Chip label={t("export.saveToPath")} active={destination === "save"} onClick={() => setDestination("save")} />
-          </div>
-        </Field>
-
         {/* Frame preset — pick + manage (add/edit/delete) */}
         <Field label={t("export.framePreset")}>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -288,26 +221,24 @@ export default function ExportDialog({
           )}
         </Field>
 
-        {/* Save path (save only) */}
-        {destination === "save" && (
-          <Field label={t("export.savePath")}>
-            <div className="flex items-center gap-2">
-              {event.output_folder ? (
-                <span className="flex-1 text-xs text-neutral-300 truncate bg-neutral-800 rounded px-2 py-1.5">
-                  {event.output_folder}
-                </span>
-              ) : (
-                <span className="flex-1 text-xs text-neutral-600 italic">{t("export.notSet")}</span>
-              )}
-              <button
-                onClick={pickOutputFolder}
-                className="px-2 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded whitespace-nowrap"
-              >
-                {event.output_folder ? t("common.change") : t("export.setPath")}
-              </button>
-            </div>
-          </Field>
-        )}
+        {/* Output folder */}
+        <Field label={t("export.savePath")}>
+          <div className="flex items-center gap-2">
+            {event.output_folder ? (
+              <span className="flex-1 text-xs text-neutral-300 truncate bg-neutral-800 rounded px-2 py-1.5">
+                {event.output_folder}
+              </span>
+            ) : (
+              <span className="flex-1 text-xs text-neutral-600 italic">{t("export.notSet")}</span>
+            )}
+            <button
+              onClick={pickOutputFolder}
+              className="px-2 py-1.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded whitespace-nowrap"
+            >
+              {event.output_folder ? t("common.change") : t("export.setPath")}
+            </button>
+          </div>
+        </Field>
 
         {/* Summary */}
         {canvasPreset && totalQty > 0 && (
@@ -318,7 +249,7 @@ export default function ExportDialog({
               {t("export.canvases", { count: canvasCount })}
             </strong>
             {" "}({t("export.specUp", { n: canvasPreset.photos_per_canvas, w: canvasPreset.canvas_width_px, h: canvasPreset.canvas_height_px })}
-            {destination === "save" ? t("export.specDpi", { dpi: canvasPreset.dpi }) : ""})
+            {t("export.specDpi", { dpi: canvasPreset.dpi })})
           </p>
         )}
 
@@ -333,14 +264,10 @@ export default function ExportDialog({
           </button>
           <button
             onClick={go}
-            disabled={busy || totalQty === 0 || !frameId || !canvasId || (destination === "save" && !event.output_folder)}
+            disabled={busy || totalQty === 0 || !frameId || !canvasId || !event.output_folder}
             className="px-4 py-1.5 text-sm bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded font-medium"
           >
-            {busy
-              ? destination === "print" ? t("export.composing") : t("export.starting")
-              : destination === "print"
-                ? t("export.printAction", { count: totalQty })
-                : t("export.saveAction", { count: canvasCount })}
+            {busy ? t("export.starting") : t("export.saveAction", { count: canvasCount })}
           </button>
         </div>
         </div>

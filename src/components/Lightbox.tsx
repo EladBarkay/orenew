@@ -167,9 +167,6 @@ export default function Lightbox({
         <span className={photo.save_count > 0 ? "font-semibold text-accent" : "text-neutral-600"}>
           {photo.save_count === 0 ? t("preview.notSaved") : `⬇${photo.save_count}`}
         </span>
-        <span className={photo.print_count > 0 ? "font-semibold text-green-400" : "text-neutral-600"}>
-          {photo.print_count === 0 ? t("preview.notPrinted") : `×${photo.print_count}`}
-        </span>
       </div>
     </div>
   );

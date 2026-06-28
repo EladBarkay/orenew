@@ -203,7 +203,6 @@ pub fn run() {
             commands::gallery::set_orientation_override,
             commands::gallery::clear_orientation_override,
             commands::export::save_photos,
-            commands::export::print_photos,
             commands::faces::count_faces,
             commands::canvas_preset::create_canvas_preset,
             commands::canvas_preset::update_canvas_preset,
