@@ -13,7 +13,7 @@ use auth::session::Session;
 use auth::AuthState;
 use preview::thumbnail::ThumbnailCache;
 use project::persistence::EventStore;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -24,6 +24,12 @@ pub struct AppState {
     pub thumbs: ThumbnailCache,
     pub app_data_dir: PathBuf,
     pub watcher: Mutex<FsWatcher>,
+    /// LRU of the folders the user has opened in the gallery (cap 10); only these
+    /// have their contents (photos) live-watched. See `rebuild_watches`.
+    pub recent_folders: Mutex<VecDeque<PathBuf>>,
+    /// The set of paths currently handed to the watcher, so `rebuild_watches` can
+    /// diff and unwatch what's no longer wanted (FsWatcher tracks nothing itself).
+    pub watched: Mutex<HashSet<PathBuf>>,
     /// Current auth state (session + entitlement). `None` => signed out / Free.
     pub auth: Mutex<Option<AuthState>>,
     /// Framed preview cache keyed by (photo_path, preset_id).
@@ -62,6 +68,46 @@ impl AppState {
             .lock()
             .unwrap()
             .retain(|(p, _), _| p != photo_path);
+    }
+
+    /// Record a folder the user opened in the gallery as most-recently-used,
+    /// capped at 10 (opening an 11th drops the oldest from live content-watching).
+    pub fn note_opened_folder(&self, folder: &std::path::Path) {
+        let mut lru = self.recent_folders.lock().unwrap();
+        lru.retain(|p| p != folder);
+        lru.push_front(folder.to_path_buf());
+        lru.truncate(10);
+    }
+
+    /// Re-derive the watch set from the event and apply it by diffing against the
+    /// previous set. Always watches the event root (non-recursive — surfaces
+    /// top-level folder add/remove for the tree) and every frame-PNG dir; watches
+    /// the *contents* of only the folders in the recent-folders LRU.
+    pub fn rebuild_watches(&self, event: &crate::project::model::Event) {
+        let mut desired: HashSet<PathBuf> = HashSet::new();
+        if let Some(root) = &event.root_path {
+            desired.insert(root.clone());
+        }
+        for f in self.recent_folders.lock().unwrap().iter() {
+            desired.insert(f.clone());
+        }
+        for fp in &event.frame_presets {
+            for p in [&fp.landscape_frame_path, &fp.portrait_frame_path] {
+                if let Some(dir) = p.parent() {
+                    desired.insert(dir.to_path_buf());
+                }
+            }
+        }
+
+        let mut watched = self.watched.lock().unwrap();
+        let mut watcher = self.watcher.lock().unwrap();
+        for p in watched.difference(&desired) {
+            let _ = watcher.unwatch(p);
+        }
+        for p in desired.difference(&watched) {
+            let _ = watcher.watch(p);
+        }
+        *watched = desired;
     }
 }
 
@@ -140,6 +186,8 @@ pub fn run() {
                 thumbs,
                 app_data_dir: data_dir.clone(),
                 watcher: Mutex::new(fs_watcher),
+                recent_folders: Mutex::new(VecDeque::with_capacity(10)),
+                watched: Mutex::new(HashSet::new()),
                 auth: Mutex::new(initial_auth),
                 preview_cache: Arc::new(Mutex::new(HashMap::new())),
             });
@@ -203,7 +251,6 @@ pub fn run() {
             commands::gallery::set_orientation_override,
             commands::gallery::clear_orientation_override,
             commands::export::save_photos,
-            commands::export::print_photos,
             commands::faces::count_faces,
             commands::canvas_preset::create_canvas_preset,
             commands::canvas_preset::update_canvas_preset,

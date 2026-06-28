@@ -1,7 +1,36 @@
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CanvasPreset } from "../types";
 
-/** Centered modal with a click-to-dismiss backdrop. `size` controls max width. */
+// Open-modal stack: the last entry is the topmost (most recently opened) dialog.
+// Esc closes the top first, so A-opens-B closes B then A. Each entry holds a ref
+// to its current onClose so the listener always calls the live handler.
+type ModalEntry = { onClose: React.MutableRefObject<() => void> };
+const modalStack: ModalEntry[] = [];
+let escListenerInstalled = false;
+let zSeq = 0;
+
+function ensureEscListener() {
+  if (escListenerInstalled) return;
+  escListenerInstalled = true;
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || modalStack.length === 0) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    modalStack[modalStack.length - 1].onClose.current();
+  });
+}
+
+/** True while any Modal is open — lets other Esc handlers (e.g. the lightbox) defer. */
+export function anyModalOpen() {
+  return modalStack.length > 0;
+}
+
+/** Centered modal with a click-to-dismiss backdrop. `size` controls max width.
+ *  Esc closes the topmost open modal (see modalStack); newer modals stack above
+ *  older ones regardless of JSX order via an increasing z-index. */
 export function Modal({
   children,
   onClose,
@@ -9,11 +38,30 @@ export function Modal({
 }: {
   children: React.ReactNode;
   onClose: () => void;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
-  const maxW = size === "sm" ? "max-w-sm" : size === "lg" ? "max-w-lg" : "max-w-md";
+  const maxW =
+    size === "sm" ? "max-w-sm" :
+    size === "lg" ? "max-w-lg" :
+    size === "xl" ? "max-w-4xl" : "max-w-md";
+
+  // Keep a live ref to onClose so the stack calls the current handler.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [z] = useState(() => 50 + ++zSeq);
+
+  useEffect(() => {
+    ensureEscListener();
+    const entry: ModalEntry = { onClose: onCloseRef };
+    modalStack.push(entry);
+    return () => {
+      const i = modalStack.indexOf(entry);
+      if (i >= 0) modalStack.splice(i, 1);
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: z }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={`relative z-10 w-full ${maxW} mx-4 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl p-5`}

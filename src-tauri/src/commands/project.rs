@@ -69,10 +69,7 @@ pub async fn set_output_folder(
 /// has subfolders (drives the expand chevron). Cheap: reads `folder` plus one
 /// `read_dir` per child. Read-only.
 #[tauri::command]
-pub async fn list_folder(
-    folder: PathBuf,
-    state: State<'_, AppState>,
-) -> Result<Vec<FolderEntry>, String> {
+pub async fn list_folder(folder: PathBuf) -> Result<Vec<FolderEntry>, String> {
     let mut entries = Vec::new();
     for child in std::fs::read_dir(&folder).tauri()?.flatten() {
         let p = child.path();
@@ -87,11 +84,6 @@ pub async fn list_folder(
             continue;
         }
         let (photo_count, has_subfolders) = folder_summary(&p);
-        // Watch each folder we surface so changes inside it (new/edited photos)
-        // are picked up — only on the paths the user is actually browsing.
-        if let Ok(mut watcher) = state.watcher.lock() {
-            let _ = watcher.watch(&p);
-        }
         entries.push(FolderEntry {
             name: p
                 .file_name()
@@ -112,18 +104,24 @@ pub async fn list_folder(
 /// — re-selecting just re-scans. Returns the updated event; the frontend derives
 /// the folder's photos by filtering the map by parent path. Also used by the
 /// watcher to refresh a folder whose contents changed.
+/// `track` marks this as a gallery-open (vs. a Ctrl-select for export or a
+/// watcher-driven refresh): only tracked opens enter the recent-folders LRU and
+/// trigger a watch rebuild, so live content-watching follows the last 10 folders
+/// the user actually browsed.
 #[tauri::command]
 pub async fn select_folder(
     event_id: Uuid,
     folder: PathBuf,
+    track: bool,
     state: State<'_, AppState>,
 ) -> Result<Event, String> {
     let mut event = state.store.load(event_id).tauri()?;
     let fresh = scan_folder(&folder)?;
     let changed = merge_folder(&mut event, &folder, fresh);
     state.store.save(&event).tauri()?;
-    if let Ok(mut watcher) = state.watcher.lock() {
-        let _ = watcher.watch(&folder);
+    if track {
+        state.note_opened_folder(&folder);
+        state.rebuild_watches(&event);
     }
     for path in changed {
         state.invalidate_preview_for_photo(&path);
@@ -131,32 +129,14 @@ pub async fn select_folder(
     Ok(event)
 }
 
-/// (Re)establish filesystem watches after opening an event (watches are not
-/// persisted across restarts). Watches only the folders the user has already
-/// browsed to — the distinct parent dirs of stored photos — plus the frame-PNG
-/// directories. Non-recursive: selecting a deep folder under a huge root watches
-/// just that folder, never the whole tree.
+/// (Re)establish filesystem watches after opening an event or editing a frame
+/// preset (watches aren't persisted across restarts). Watches the event root
+/// (non-recursive — surfaces top-level folder add/remove for the tree) + frame-PNG
+/// dirs always, plus the contents of the recent-folders LRU. See `rebuild_watches`.
 #[tauri::command]
 pub async fn sync_watches(event_id: Uuid, state: State<'_, AppState>) -> Result<(), String> {
     let event = state.store.load(event_id).tauri()?;
-    if let Ok(mut watcher) = state.watcher.lock() {
-        let mut folders: std::collections::HashSet<&Path> = std::collections::HashSet::new();
-        for path in event.photos.keys() {
-            if let Some(dir) = path.parent() {
-                folders.insert(dir);
-            }
-        }
-        for dir in folders {
-            let _ = watcher.watch(dir);
-        }
-        for fp in &event.frame_presets {
-            for p in [&fp.landscape_frame_path, &fp.portrait_frame_path] {
-                if let Some(dir) = p.parent() {
-                    let _ = watcher.watch(dir);
-                }
-            }
-        }
-    }
+    state.rebuild_watches(&event);
     Ok(())
 }
 
@@ -203,7 +183,7 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
 /// Merge a folder's freshly-scanned photos into the event's path-keyed map,
 /// preserving user data:
 /// - Same path + same hash → keep stored entry, refresh file metadata
-/// - Same path + changed hash → keep overrides + copies, reset print_count, take new dims/hash
+/// - Same path + changed hash → keep overrides + copies, take new dims/hash
 /// - New path → insert
 /// - Stored photo under `folder` no longer on disk → remove
 ///
@@ -230,7 +210,6 @@ fn merge_folder(event: &mut Event, folder: &Path, scanned: Vec<Photo>) -> Vec<Pa
                     // crop_override stores pixel coords for the old image's dims;
                     // clearing it (via ..new_p) prevents out-of-bounds crops if the
                     // replacement has a different resolution.
-                    print_count: 0,
                     // Queued copies are user intent — keep them across a content change.
                     copies: old.copies,
                     ..new_p
@@ -271,10 +250,9 @@ mod tests {
             exif_orientation: None,
             orientation_override: None,
             crop_override: None,
-            print_count: 5,
             save_count: 0,
             content_hash: hash.to_string(),
-            copies: 1,
+            copies: 7,
             size_bytes: 0,
             created: 0,
             modified: 0,
@@ -282,11 +260,11 @@ mod tests {
     }
 
     #[test]
-    fn changed_hash_resets_count_and_is_reported() {
+    fn changed_hash_keeps_copies_and_is_reported() {
         let mut event = event_with(vec![photo("/f/a.jpg", "h1")]);
         let changed = merge_folder(&mut event, Path::new("/f"), vec![photo("/f/a.jpg", "h2")]);
         let merged = &event.photos[Path::new("/f/a.jpg")];
-        assert_eq!(merged.print_count, 0, "content change resets print_count");
+        assert_eq!(merged.copies, 7, "queued copies survive a content change");
         assert_eq!(merged.content_hash, "h2");
         assert_eq!(changed, vec![PathBuf::from("/f/a.jpg")]);
     }
@@ -295,7 +273,7 @@ mod tests {
     fn same_hash_keeps_everything_and_reports_nothing() {
         let mut event = event_with(vec![photo("/f/a.jpg", "h1")]);
         let changed = merge_folder(&mut event, Path::new("/f"), vec![photo("/f/a.jpg", "h1")]);
-        assert_eq!(event.photos[Path::new("/f/a.jpg")].print_count, 5);
+        assert_eq!(event.photos[Path::new("/f/a.jpg")].copies, 7);
         assert!(changed.is_empty());
     }
 

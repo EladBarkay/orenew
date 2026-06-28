@@ -8,6 +8,9 @@ import { parentDir } from "../lib/paths";
 type Handlers = {
   onEvent: (e: OrenewEvent) => void;
   onFrameChanged: () => void;
+  /** Any non-frame fs change (even in folders we haven't browsed) — lets the
+   *  sidebar tree refresh, e.g. a new top-level folder dropped into the root. */
+  onTreeMaybeChanged: () => void;
 };
 
 /**
@@ -50,9 +53,12 @@ export function useFsWatcher(
         return;
       }
 
+      // Any non-frame change may add/remove a folder node — let the tree refresh.
+      handlersRef.current.onTreeMaybeChanged();
+
       // Photo change → re-scan the owning folder, but only if it's one we've
       // browsed to (it holds photos in the map, or it's the active folder). We
-      // never watch or refresh folders the user hasn't opened.
+      // never re-scan folders the user hasn't opened.
       const folder = parentDir(changedPath);
       const known =
         norm(folder) === norm(activePathRef.current ?? "") ||
@@ -62,6 +68,7 @@ export function useFsWatcher(
         const updated = await invoke<OrenewEvent>("select_folder", {
           eventId: cur.id,
           folder,
+          track: false, // watcher refresh — don't touch the recent-folders LRU
         });
         handlersRef.current.onEvent(updated);
       } catch (err) {

@@ -10,11 +10,10 @@ import SettingsDialog from "./components/SettingsDialog";
 import DeviceManagerDialog from "./components/DeviceManagerDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
 import EventConfigDialog from "./components/EventConfigDialog";
-import { Modal } from "./components/ui";
+import { Modal, anyModalOpen } from "./components/ui";
 import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
 import ViewControls from "./components/ViewControls";
-import CanvasPreview from "./components/CanvasPreview";
 import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
@@ -33,7 +32,9 @@ const folderOf = (photoPath: string) => parentDir(photoPath);
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
-export type ViewMode = "gallery" | "canvas";
+
+const LAST_EVENT_KEY = "orenew.lastEvent";
+const LAST_FOLDER_KEY = "orenew.lastFolder";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -41,6 +42,9 @@ export default function App() {
   // The folder currently shown in the gallery (its absolute path). Photos are
   // derived from `event.photos` by matching parent dir.
   const [activePath, setActivePath] = useState<string | null>(null);
+  // Extra folders (beyond the active one) the user Ctrl-clicked in the sidebar to
+  // include in export. The active folder is always part of the export set.
+  const [extraFolders, setExtraFolders] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
@@ -50,16 +54,22 @@ export default function App() {
   const [devicePicker, setDevicePicker] = useState<{ mode: "limit" | "manage"; devices: Device[] } | null>(null);
   const [deviceHash, setDeviceHash] = useState("");
   const [frameNonce, setFrameNonce] = useState(0);
+  // Bumped (debounced) on any fs change so the sidebar tree re-reads its folders.
+  const [treeNonce, setTreeNonce] = useState(0);
+  const treeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
   // Add-preset modals stack over the Export dialog (which manages presets), so they
   // get their own state instead of sharing the single `modal` slot.
   const [addingFrame, setAddingFrame] = useState(false);
   const [addingCanvas, setAddingCanvas] = useState(false);
+  // Id of the preset just created via an add-dialog, so the Export / Event-config
+  // dialog that triggered the add auto-selects it. Cleared when those dialogs open.
+  const [newFrameId, setNewFrameId] = useState<string | null>(null);
+  const [newCanvasId, setNewCanvasId] = useState<string | null>(null);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
-  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [hideEmpty, setHideEmpty] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -93,6 +103,15 @@ export default function App() {
       ? Object.values(event.photos).filter((p) => folderOf(p.path) === norm(activePath))
       : [];
 
+  // Folders contributing to export: the active folder plus any Ctrl-clicked extras.
+  const exportFolders = new Set<string>(
+    [activePath, ...extraFolders].filter((p): p is string => !!p).map(norm)
+  );
+  // Photos across every export folder (the active gallery folder + extras).
+  const exportFolderPhotos: Photo[] = event
+    ? Object.values(event.photos).filter((p) => exportFolders.has(folderOf(p.path)))
+    : [];
+
   // Block the webview reload shortcuts — a reload wipes the in-memory event and
   // forces the user to re-open it.
   useEffect(() => {
@@ -110,13 +129,14 @@ export default function App() {
     const bump = (dir: number) =>
       setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
+      if (!(e.ctrlKey || e.metaKey) || anyModalOpen()) return;
       if (["+", "=", "Add"].includes(e.key)) { e.preventDefault(); bump(1); }
       else if (["-", "_", "Subtract"].includes(e.key)) { e.preventDefault(); bump(-1); }
     };
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault(); // suppress webview page zoom
+      if (anyModalOpen()) return; // a dialog has focus — don't zoom the gallery behind it
       bump(e.deltaY < 0 ? 1 : -1);
     };
     window.addEventListener("keydown", onKey);
@@ -177,6 +197,13 @@ export default function App() {
   // Best-effort signed update check on startup.
   useUpdater();
 
+  // ponytail: debounce coalesces a burst of file copies into one tree refresh
+  // instead of one list_folder per open node per file.
+  function bumpTreeNonce() {
+    if (treeTimerRef.current) clearTimeout(treeTimerRef.current);
+    treeTimerRef.current = setTimeout(() => setTreeNonce((n) => n + 1), 300);
+  }
+
   useFsWatcher(event, activePath, {
     onEvent: (updated) => {
       setEvent(updated);
@@ -185,6 +212,7 @@ export default function App() {
       setSelected((prev) => (prev ? (updated.photos[prev.path] ?? prev) : prev));
     },
     onFrameChanged: () => setFrameNonce((n) => n + 1),
+    onTreeMaybeChanged: bumpTreeNonce,
   });
 
   // Seed the global copy-queue from each photo's persisted `copies` (keyed by
@@ -200,9 +228,9 @@ export default function App() {
   }
 
   // Seed qty=1 for photos that appear after a folder was opened (added on disk and
-  // picked up by the watcher). Runs after the active folder's photos change.
+  // picked up by the watcher) or in a newly Ctrl-selected export folder.
   useEffect(() => {
-    const newPhotos = folderPhotos.filter((p) => !seenIdsRef.current.has(p.path));
+    const newPhotos = exportFolderPhotos.filter((p) => !seenIdsRef.current.has(p.path));
     if (newPhotos.length === 0) return;
     setPhotoQueue((prev) => {
       const next = { ...prev };
@@ -210,7 +238,7 @@ export default function App() {
       return next;
     });
     for (const p of newPhotos) seenIdsRef.current.add(p.path);
-  }, [folderPhotos]);
+  }, [exportFolderPhotos]);
 
   // Persist queued copies (debounced) so they survive close/reopen. Skips the run
   // right after a load (seedQueueFromEvent) so we don't echo disk values back.
@@ -225,40 +253,84 @@ export default function App() {
   }, [photoQueue, event?.id]);
 
   async function openEvent() {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const folder = await open({ directory: true, multiple: false });
+    if (!folder) return;
+    await loadEvent(folder as string);
+  }
+
+  // Open (or resume) the event rooted at `path` and show its root folder. Shared by
+  // the folder picker and the relaunch auto-open. Persists the path as last-opened.
+  async function loadEvent(path: string) {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false });
-      if (!folder) return;
       setStatus(t("app.loading"));
-      const evt = await invoke<OrenewEvent>("open_event", { path: folder });
+      const evt = await invoke<OrenewEvent>("open_event", { path });
       setEvent(evt);
       clearSelection();
       setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
-      // Open the root folder so the gallery isn't empty; subfolders are browsed
-      // from the sidebar tree.
-      const root = evt.root_path ?? (folder as string);
-      await selectFolder(root, evt);
+      // Resume the last viewed folder if it's inside this event; otherwise open the
+      // root so the gallery isn't empty. Subfolders are browsed from the sidebar tree.
+      const root = evt.root_path ?? path;
+      const stored = localStorage.getItem(LAST_FOLDER_KEY);
+      const start = stored && norm(stored).startsWith(norm(root)) ? stored : root;
+      await selectFolder(start, { forEvent: evt });
+      localStorage.setItem(LAST_EVENT_KEY, root);
       setStatus("");
+    } catch (e) {
+      setStatus(t("app.error", { message: String(e) }));
+      throw e;
+    }
+  }
+
+  // Relaunch: reopen the last viewed event. If its folder is gone, drop the key
+  // and fall back to the empty state.
+  useEffect(() => {
+    const last = localStorage.getItem(LAST_EVENT_KEY);
+    if (last) loadEvent(last).catch(() => localStorage.removeItem(LAST_EVENT_KEY));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open a folder from the sidebar tree: scan + merge its photos in Rust. When
+  // `activate` (the default), make it the gallery folder and reset the extra-folder
+  // export set; `forEvent` lets openEvent pass the just-loaded event before state
+  // has settled. With `activate: false` it only merges photos (used by Ctrl-select).
+  async function selectFolder(path: string, opts: { forEvent?: OrenewEvent; activate?: boolean } = {}) {
+    const { forEvent, activate = true } = opts;
+    const evt = forEvent ?? event;
+    if (!evt) return;
+    try {
+      const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path, track: activate });
+      setEvent(updated);
+      if (activate) {
+        setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
+        setExtraFolders(new Set());
+        localStorage.setItem(LAST_FOLDER_KEY, path);
+        clearSelection();
+      }
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
   }
 
-  // Open a folder from the sidebar tree: scan + merge its photos in Rust, then make
-  // it the active folder. `forEvent` lets openEvent pass the just-loaded event
-  // before state has settled.
-  async function selectFolder(path: string, forEvent?: OrenewEvent) {
-    const evt = forEvent ?? event;
-    if (!evt) return;
-    try {
-      const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path });
-      setEvent(updated);
-      setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
-      clearSelection();
-    } catch (e) {
-      setStatus(t("app.error", { message: String(e) }));
+  // Sidebar folder click. Plain click activates a single folder; Ctrl/Cmd-click
+  // toggles a folder in the export set without leaving the active folder (the
+  // active folder can't be removed — it's always exported).
+  async function handleFolderClick(path: string, additive: boolean) {
+    if (!additive || !activePath) {
+      await selectFolder(path);
+      return;
     }
+    // Ctrl-click the active folder: it's always exported, nothing to toggle.
+    if (norm(path) === norm(activePath)) return;
+    setExtraFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+    // Merge its photos so they're available for export (seeding handles qty=1).
+    await selectFolder(path, { activate: false });
   }
 
   async function deleteEvent() {
@@ -271,6 +343,7 @@ export default function App() {
     if (!yes) return;
     try {
       await invoke("delete_event", { eventId: event.id });
+      localStorage.removeItem(LAST_EVENT_KEY);
       setEvent(null);
       setActivePath(null);
       setSelected(null);
@@ -289,9 +362,14 @@ export default function App() {
     if (!yes) return;
     try {
       await invoke("delete_canvas_preset", { eventId: event.id, presetId: preset.id });
+      const remaining = event.canvas_presets.filter((p) => p.id !== preset.id);
       updateEvent({
         ...event,
-        canvas_presets: event.canvas_presets.filter((p) => p.id !== preset.id),
+        canvas_presets: remaining,
+        active_canvas_preset_id:
+          event.active_canvas_preset_id === preset.id
+            ? remaining[0]?.id ?? null
+            : event.active_canvas_preset_id,
       });
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
@@ -343,13 +421,13 @@ export default function App() {
 
   // Bulk actions act on the selection, or the whole folder when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.path);
-  // Process/totals only count the targeted photos: the selection if any, else the
-  // current folder. The queue is global across browsed folders, so scope it here —
-  // export/preview must never pull in photos from other (sub)folders.
-  const folderPaths = new Set(folderPhotos.map((p) => p.path));
+  // Process/totals only count the targeted photos: the photo selection if any, else
+  // every export folder (active + Ctrl-selected). The queue is global across browsed
+  // folders, so scope it here — export/preview never pull in unselected folders.
+  const exportPaths = new Set(exportFolderPhotos.map((p) => p.path));
   const effectiveQueue = Object.fromEntries(
     Object.entries(photoQueue).filter(([path]) =>
-      selectedIds.size > 0 ? selectedIds.has(path) : folderPaths.has(path)
+      selectedIds.size > 0 ? selectedIds.has(path) : exportPaths.has(path)
     )
   );
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
@@ -407,25 +485,29 @@ export default function App() {
   // `selected` tracks the last click for the preview + shift anchor.
   function handlePhotoClick(photo: Photo, e: React.MouseEvent) {
     const id = photo.path;
-    setSelected(photo);
     if (e.shiftKey && anchorRef.current) {
+      setSelected(photo);
       setSelectedIds(new Set(rangeIds(visiblePhotos, anchorRef.current, id)));
     } else if (e.ctrlKey || e.metaKey) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) { next.delete(id); setSelected(null); }
+        else { next.add(id); setSelected(photo); }
         return next;
       });
       anchorRef.current = id;
     } else {
       // Plain click selects just this photo. Double-click opens the full-screen
       // review (see handlePhotoDoubleClick) — single click no longer opens it.
+      setSelected(photo);
       setSelectedIds(new Set([id]));
       anchorRef.current = id;
     }
   }
 
-  function handlePhotoDoubleClick(photo: Photo) {
+  function handlePhotoDoubleClick(photo: Photo, e: React.MouseEvent) {
+    // During Ctrl/Cmd multi-selection a double-click must not open the lightbox.
+    if (e.ctrlKey || e.metaKey) return;
     setSelected(photo);
     setLightboxOpen(true);
   }
@@ -433,6 +515,7 @@ export default function App() {
   // Ctrl/Cmd+A selects every photo currently shown in the grid.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (anyModalOpen()) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
         if (!activePath) return;
         // Don't hijack select-all inside text fields.
@@ -456,6 +539,7 @@ export default function App() {
   // with nothing selected, the first arrow selects the first card and goes from there.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (anyModalOpen()) return;
       const isArrow = ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key);
       if (isArrow) {
         const target = e.target as HTMLElement | null;
@@ -489,12 +573,28 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [selected, visiblePhotos, lightboxOpen]);
 
+  // +/- bumps the copy count of the single selected card (Ctrl+± stays zoom).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || lightboxOpen || anyModalOpen()) return;
+      if (!selected || selectedIds.size > 1) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (["+", "="].includes(e.key)) { e.preventDefault(); adjustQty(selected.path, 1); }
+      else if (["-", "_"].includes(e.key)) { e.preventDefault(); adjustQty(selected.path, -1); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selected, selectedIds, lightboxOpen]);
+
   // Escape: close the lightbox, else clear the selection. Kept separate from the
   // arrow/Enter nav effect above (which is gated on `selected`) so Esc still works
   // after Ctrl+A — that sets selectedIds without setting `selected`.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // A dialog open? Let the Modal stack handle Esc (closes topmost first).
+      if (anyModalOpen()) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (lightboxOpen) setLightboxOpen(false);
@@ -560,16 +660,14 @@ export default function App() {
 
   // After exporting: optimistically bump counts for processed photos and clear
   // only those from the queue (`queue` is the effective, possibly selection-scoped set).
-  function handleExported(destination: "print" | "save", queue: Record<string, number>) {
+  function handleExported(queue: Record<string, number>) {
     setEvent((prev) => {
       if (!prev) return prev;
       const photos = { ...prev.photos };
       for (const [path, qty] of Object.entries(queue)) {
         const p = photos[path];
         if (!p || !qty) continue;
-        photos[path] = destination === "print"
-          ? { ...p, print_count: p.print_count + qty }
-          : { ...p, save_count: p.save_count + qty };
+        photos[path] = { ...p, save_count: p.save_count + qty };
       }
       return { ...prev, photos };
     });
@@ -599,7 +697,7 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         onOpenEvent={openEvent}
-        onConfigureEvent={() => setModal("eventConfig")}
+        onConfigureEvent={() => { setNewFrameId(null); setNewCanvasId(null); setModal("eventConfig"); }}
         onDeleteEvent={deleteEvent}
         onSettings={() => setModal("settings")}
       />
@@ -610,13 +708,13 @@ export default function App() {
             <Sidebar
               rootPath={event.root_path}
               activePath={activePath}
+              selectedFolders={exportFolders}
               hideEmpty={hideEmpty}
-              onSelectFolder={(p) => selectFolder(p)}
+              refreshNonce={treeNonce}
+              onSelectFolder={handleFolderClick}
             />
             <div className="flex flex-col flex-1 overflow-hidden">
               <ViewControls
-                viewMode={viewMode}
-                onSetViewMode={setViewMode}
                 hideEmpty={hideEmpty}
                 onToggleHideEmpty={() => setHideEmpty((v) => !v)}
                 cellSize={cellSize}
@@ -627,14 +725,6 @@ export default function App() {
                 onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
               />
               <div className="flex flex-1 overflow-hidden">
-                {viewMode === "canvas" ? (
-                  <CanvasPreview
-                    event={event}
-                    photoQueue={effectiveQueue}
-                    onAddFrame={() => setAddingFrame(true)}
-                    onAddCanvas={() => setAddingCanvas(true)}
-                  />
-                ) : (
                   <Gallery
                     photos={visiblePhotos}
                     selectedId={selected?.path ?? null}
@@ -647,7 +737,6 @@ export default function App() {
                     cellSize={cellSize}
                     onColCountChange={(n) => { colCountRef.current = n; }}
                   />
-                )}
               </div>
             </div>
           </div>
@@ -665,7 +754,7 @@ export default function App() {
               onSetAllQty={handleSetAllQty}
               onScanFaces={scanFaces}
               onClearSelection={clearSelection}
-              onExport={() => setModal("export")}
+              onExport={() => { setNewFrameId(null); setNewCanvasId(null); setModal("export"); }}
             />
           )}
 
@@ -697,6 +786,8 @@ export default function App() {
         <ExportDialog
           event={event}
           photoQueue={effectiveQueue}
+          newFrameId={newFrameId}
+          newCanvasId={newCanvasId}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onExported={handleExported}
@@ -714,6 +805,7 @@ export default function App() {
           onCreated={(updatedEvent) => {
             updateEvent(updatedEvent);
             invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
+            setNewFrameId(updatedEvent.active_frame_preset_id);
             setAddingFrame(false);
           }}
           onClose={() => setAddingFrame(false)}
@@ -722,6 +814,8 @@ export default function App() {
       {modal === "eventConfig" && event && (
         <EventConfigDialog
           event={event}
+          newFrameId={newFrameId}
+          newCanvasId={newCanvasId}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onAddFrame={() => setAddingFrame(true)}
@@ -760,7 +854,7 @@ export default function App() {
         <Modal onClose={() => setAddingCanvas(false)}>
           <CanvasPresetForm
             event={event}
-            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setAddingCanvas(false); }}
+            onCreated={(preset, updatedEvent) => { updateEvent(updatedEvent); setNewCanvasId(preset.id); setAddingCanvas(false); }}
             onCancel={() => setAddingCanvas(false)}
           />
         </Modal>

@@ -15,7 +15,6 @@ export type Photo = {
   exif_orientation: Orientation | null;
   orientation_override: Orientation | null;
   crop_override: CropRect | null;
-  print_count: number;
   save_count: number;
   content_hash: string;
   copies: number;

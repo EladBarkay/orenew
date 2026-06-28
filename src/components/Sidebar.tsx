@@ -7,8 +7,12 @@ import { basename } from "../lib/paths";
 type Props = {
   rootPath: string | null;
   activePath: string | null;
+  /** Folders included in export (active + Ctrl-selected); all get a highlight. */
+  selectedFolders: Set<string>;
   hideEmpty: boolean;
-  onSelectFolder: (path: string) => void;
+  /** Bumped on fs changes to re-read open folders (new/removed subfolders). */
+  refreshNonce: number;
+  onSelectFolder: (path: string, additive: boolean) => void;
 };
 
 const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
@@ -19,7 +23,7 @@ const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
  * call) only when expanded — the whole tree is never walked up front. Clicking a
  * folder loads its photos into the gallery.
  */
-export default function Sidebar({ rootPath, activePath, hideEmpty, onSelectFolder }: Props) {
+export default function Sidebar({ rootPath, activePath, selectedFolders, hideEmpty, refreshNonce, onSelectFolder }: Props) {
   if (!rootPath) return <aside className="w-60 shrink-0 border-e border-neutral-800 bg-neutral-900" />;
 
   const root: FolderEntry = {
@@ -31,24 +35,27 @@ export default function Sidebar({ rootPath, activePath, hideEmpty, onSelectFolde
 
   return (
     <aside className="w-60 shrink-0 overflow-y-auto border-e border-neutral-800 bg-neutral-900 py-1.5">
-      <Node node={root} depth={0} activePath={activePath} hideEmpty={hideEmpty} onSelectFolder={onSelectFolder} defaultOpen />
+      <Node node={root} depth={0} activePath={activePath} selectedFolders={selectedFolders} hideEmpty={hideEmpty} refreshNonce={refreshNonce} onSelectFolder={onSelectFolder} defaultOpen />
     </aside>
   );
 }
 
 function Node({
-  node, depth, activePath, hideEmpty, onSelectFolder, defaultOpen = false,
+  node, depth, activePath, selectedFolders, hideEmpty, refreshNonce, onSelectFolder, defaultOpen = false,
 }: {
   node: FolderEntry;
   depth: number;
   activePath: string | null;
+  selectedFolders: Set<string>;
   hideEmpty: boolean;
-  onSelectFolder: (path: string) => void;
+  refreshNonce: number;
+  onSelectFolder: (path: string, additive: boolean) => void;
   defaultOpen?: boolean;
 }) {
-  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const [children, setChildren] = useState<FolderEntry[] | null>(null);
+  // Right-click context menu position (viewport coords), or null when closed.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Lazy-load immediate subfolders the first time the node opens.
   useEffect(() => {
@@ -58,7 +65,18 @@ function Node({
       .catch(() => setChildren([]));
   }, [open, children, node.path]);
 
+  // Re-read an open node's subfolders when the watcher reports a change, so new or
+  // removed folders (e.g. a fresh SD-dump under the root) appear without reopening.
+  useEffect(() => {
+    if (!open || refreshNonce === 0) return;
+    invoke<FolderEntry[]>("list_folder", { folder: node.path })
+      .then(setChildren)
+      .catch(() => {});
+  }, [refreshNonce]);
+
   const active = activePath != null && norm(node.path) === norm(activePath);
+  // Part of the export set but not the active folder (Ctrl-selected extra).
+  const selected = !active && selectedFolders.has(norm(node.path));
   const visibleChildren = (children ?? []).filter(
     (c) => !hideEmpty || c.photo_count > 0 || c.has_subfolders
   );
@@ -68,17 +86,14 @@ function Node({
       <div
         className={[
           "group flex items-center gap-1 pe-2 py-1 cursor-pointer transition-colors",
-          active ? "bg-accent/15 text-accent" : "text-neutral-300 hover:bg-neutral-800",
+          active ? "bg-accent/15 text-accent"
+            : selected ? "bg-accent/10 text-accent/90"
+            : "text-neutral-300 hover:bg-neutral-800",
         ].join(" ")}
         style={{ paddingInlineStart: 8 + depth * 14 }}
-        onClick={() => onSelectFolder(node.path)}
-        onDoubleClick={async () => {
-          try {
-            const { openPath } = await import("@tauri-apps/plugin-opener");
-            await openPath(node.path);
-          } catch {}
-        }}
-        title={t("sidebar.revealFolder")}
+        onClick={(e) => onSelectFolder(node.path, e.ctrlKey || e.metaKey)}
+        onDoubleClick={() => { if (node.has_subfolders) setOpen((v) => !v); }}
+        onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
       >
         <button
           type="button"
@@ -97,6 +112,20 @@ function Node({
           </span>
         )}
       </div>
+      {menu && (
+        <FolderContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          onOpenInExplorer={async () => {
+            setMenu(null);
+            try {
+              const { openPath } = await import("@tauri-apps/plugin-opener");
+              await openPath(node.path);
+            } catch {}
+          }}
+        />
+      )}
       {open &&
         visibleChildren.map((c) => (
           <Node
@@ -104,10 +133,47 @@ function Node({
             node={c}
             depth={depth + 1}
             activePath={activePath}
+            selectedFolders={selectedFolders}
             hideEmpty={hideEmpty}
+            refreshNonce={refreshNonce}
             onSelectFolder={onSelectFolder}
           />
         ))}
+    </>
+  );
+}
+
+// Minimal right-click menu: one action, dismissed by Escape or any outside click
+// (a full-screen transparent backdrop). Fixed-positioned at the cursor.
+function FolderContextMenu({
+  x, y, onClose, onOpenInExplorer,
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  onOpenInExplorer: () => void;
+}) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[100]" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} />
+      <div
+        className="fixed z-[101] min-w-44 rounded-md border border-neutral-700 bg-neutral-800 py-1 shadow-xl"
+        style={{ top: y, left: x }}
+      >
+        <button
+          onClick={onOpenInExplorer}
+          className="w-full px-3 py-1.5 text-start text-sm text-neutral-200 hover:bg-neutral-700"
+        >
+          {t("sidebar.openInExplorer")}
+        </button>
+      </div>
     </>
   );
 }

@@ -22,18 +22,8 @@ struct SaveComplete {
     output_dir: String,
 }
 
-/// Result of a print run. `dialog_opened` is true only where we can launch a real
-/// OS print dialog (Windows); elsewhere the canvases are written to `output_dir`
-/// and the frontend offers to open that folder so the user prints manually.
-#[derive(Serialize, Clone)]
-pub struct PrintResult {
-    count: usize,
-    dialog_opened: bool,
-    output_dir: String,
-}
-
 /// Open both frame PNGs and pre-resize/convert them for a given slot — done once
-/// per save/print run so the per-photo hot path does no frame I/O or conversion.
+/// per save run so the per-photo hot path does no frame I/O or conversion.
 pub(crate) fn load_and_prepare_frames(
     preset: &FramePreset,
     slot_w: u32,
@@ -87,8 +77,8 @@ pub(crate) fn collect_selected(event: &Event, quantities: &HashMap<PathBuf, u32>
     photos
 }
 
-/// Everything a save/print run needs once the event is loaded — shared by both
-/// `save_photos` and `print_photos`, which differ only in how they emit output.
+/// Everything a save run needs once the event is loaded — also used by the canvas
+/// preview to render a single page.
 struct PreparedExport {
     photos: Vec<Photo>,
     canvas_preset: CanvasPreset,
@@ -275,96 +265,4 @@ pub async fn save_photos(
     });
 
     Ok(())
-}
-
-#[tauri::command]
-pub async fn print_photos(
-    event_id: Uuid,
-    quantities: HashMap<PathBuf, u32>,
-    frame_preset_id: Uuid,
-    canvas_preset_id: Uuid,
-    state: State<'_, AppState>,
-) -> Result<PrintResult, String> {
-    let mut event = state.store.load(event_id).tauri()?;
-    let PreparedExport {
-        photos,
-        canvas_preset,
-        frame_preset,
-        frames,
-        watermark,
-        slot_w,
-        slot_h,
-    } = prepare_export(
-        &event,
-        &quantities,
-        frame_preset_id,
-        canvas_preset_id,
-        1,
-        state.watermark(),
-    )?;
-
-    let framed: Vec<_> = run_bounded(|| {
-        photos
-            .par_iter()
-            .filter_map(|p| {
-                crate::photo::compose::frame_photo_for_canvas(
-                    p,
-                    &frame_preset,
-                    slot_w,
-                    slot_h,
-                    &frames,
-                )
-                .ok()
-            })
-            .collect()
-    });
-
-    let canvases: Vec<_> = crate::canvas::compositor::compose_canvases(&framed, &canvas_preset)
-        .into_iter()
-        .map(|c| {
-            if watermark {
-                crate::canvas::compositor::apply_watermark(&c)
-            } else {
-                c
-            }
-        })
-        .collect();
-
-    let tmp_dir = std::env::temp_dir().join("orenew_print");
-    std::fs::create_dir_all(&tmp_dir).tauri()?;
-
-    let mut paths: Vec<PathBuf> = Vec::new();
-    for (i, canvas) in canvases.iter().enumerate() {
-        let p = tmp_dir.join(format!("print_{i:04}.jpg"));
-        crate::photo::encode::write_print_ready(canvas, &p).tauri()?;
-        paths.push(p);
-    }
-
-    // Windows: launch the native print dialog (Photos print wizard) per canvas.
-    // The filenames are app-generated (`print_NNNN.jpg`), so the single-quoted
-    // PowerShell argument needs no further escaping.
-    #[cfg(windows)]
-    for p in &paths {
-        let _ = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])
-            .arg(format!(
-                "Start-Process -FilePath '{}' -Verb Print",
-                p.display()
-            ))
-            .spawn();
-    }
-
-    bump_counts(&mut event, &quantities, |p| &mut p.print_count);
-    state.store.save(&event).tauri()?;
-    // Flush immediately — billing-relevant counts must survive a crash.
-    // ponytail: print_count is optimistic — we can't detect the user cancelling
-    // the OS print dialog. Accurate counts would need per-platform spooler
-    // polling; add that only if customers dispute print billing.
-    state.store.flush_one(event_id).tauri()?;
-
-    Ok(PrintResult {
-        count: paths.len(),
-        dialog_opened: cfg!(windows),
-        output_dir: tmp_dir.to_string_lossy().into_owned(),
-    })
 }

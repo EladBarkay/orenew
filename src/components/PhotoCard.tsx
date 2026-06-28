@@ -10,7 +10,7 @@ type Props = {
   /** The last-clicked photo (preview/anchor) — stronger ring. */
   active: boolean;
   onClick: (e: React.MouseEvent) => void;
-  onDoubleClick: () => void;
+  onDoubleClick: (e: React.MouseEvent) => void;
   cellSize: number;
   /** Number queued for the next process run. */
   qty: number;
@@ -39,7 +39,7 @@ function PhotoCard({ photo, selected, active, onClick, onDoubleClick, cellSize, 
       title={filename}
     >
       {/* Thumbnail (click selects, double-click opens the full-screen review) */}
-      <button onClick={onClick} onDoubleClick={onDoubleClick} className="block w-full h-full focus:outline-none">
+      <button onClick={onClick} onDoubleClick={(e) => onDoubleClick(e)} className="block w-full h-full focus:outline-none">
         {src ? (
           <img
             src={src}
