@@ -62,8 +62,8 @@ pub fn xmp_path_for(photo_path: &Path) -> Option<PathBuf> {
 
 /// Content-based SHA-256 of the photo bytes followed by the XMP sidecar bytes
 /// (per spec). Streams both files in chunks so memory stays bounded regardless
-/// of file size. Changing either file changes the hash, which resets print_count
-/// downstream in `merge_photos`.
+/// of file size. Changing either file changes the hash, which `merge_folder` uses
+/// to refresh the stored photo (new dims/hash) while keeping user overrides.
 pub fn compute_content_hash(photo_path: &Path, xmp_path: Option<&Path>) -> Result<String> {
     let mut hasher = Sha256::new();
 
@@ -107,7 +107,6 @@ pub fn scan_photo(path: PathBuf) -> Result<Photo> {
         exif_orientation,
         orientation_override: None,
         crop_override: None,
-        print_count: 0,
         save_count: 0,
         content_hash,
         copies: 1,

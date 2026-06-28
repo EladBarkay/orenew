@@ -162,7 +162,6 @@ mod tests {
             exif_orientation: None,
             orientation_override: None,
             crop_override: None,
-            print_count: 0,
             save_count: 0,
             content_hash: String::new(),
             copies: 1,

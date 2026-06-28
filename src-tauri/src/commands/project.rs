@@ -203,7 +203,7 @@ fn scan_folder(path: &std::path::Path) -> Result<Vec<Photo>, String> {
 /// Merge a folder's freshly-scanned photos into the event's path-keyed map,
 /// preserving user data:
 /// - Same path + same hash → keep stored entry, refresh file metadata
-/// - Same path + changed hash → keep overrides + copies, reset print_count, take new dims/hash
+/// - Same path + changed hash → keep overrides + copies, take new dims/hash
 /// - New path → insert
 /// - Stored photo under `folder` no longer on disk → remove
 ///
@@ -230,7 +230,6 @@ fn merge_folder(event: &mut Event, folder: &Path, scanned: Vec<Photo>) -> Vec<Pa
                     // crop_override stores pixel coords for the old image's dims;
                     // clearing it (via ..new_p) prevents out-of-bounds crops if the
                     // replacement has a different resolution.
-                    print_count: 0,
                     // Queued copies are user intent — keep them across a content change.
                     copies: old.copies,
                     ..new_p
@@ -271,10 +270,9 @@ mod tests {
             exif_orientation: None,
             orientation_override: None,
             crop_override: None,
-            print_count: 5,
             save_count: 0,
             content_hash: hash.to_string(),
-            copies: 1,
+            copies: 7,
             size_bytes: 0,
             created: 0,
             modified: 0,
@@ -282,11 +280,11 @@ mod tests {
     }
 
     #[test]
-    fn changed_hash_resets_count_and_is_reported() {
+    fn changed_hash_keeps_copies_and_is_reported() {
         let mut event = event_with(vec![photo("/f/a.jpg", "h1")]);
         let changed = merge_folder(&mut event, Path::new("/f"), vec![photo("/f/a.jpg", "h2")]);
         let merged = &event.photos[Path::new("/f/a.jpg")];
-        assert_eq!(merged.print_count, 0, "content change resets print_count");
+        assert_eq!(merged.copies, 7, "queued copies survive a content change");
         assert_eq!(merged.content_hash, "h2");
         assert_eq!(changed, vec![PathBuf::from("/f/a.jpg")]);
     }
@@ -295,7 +293,7 @@ mod tests {
     fn same_hash_keeps_everything_and_reports_nothing() {
         let mut event = event_with(vec![photo("/f/a.jpg", "h1")]);
         let changed = merge_folder(&mut event, Path::new("/f"), vec![photo("/f/a.jpg", "h1")]);
-        assert_eq!(event.photos[Path::new("/f/a.jpg")].print_count, 5);
+        assert_eq!(event.photos[Path::new("/f/a.jpg")].copies, 7);
         assert!(changed.is_empty());
     }
 

@@ -40,7 +40,7 @@ When opening a folder, the app matches it against `root_path` in existing `orene
 There is **no batch grouping**: the folder structure is read live from disk, and the event persists only the photos the user has browsed to, keyed by absolute path. A photo's identity is its path (no separate id).
 
 - **Event** — top-level: name, `root_path`, `photos: HashMap<PathBuf, Photo>` (browsed photos), active `FramePreset`, `CanvasPreset`s, output folder path
-- **Photo** — `path` (identity), EXIF orientation, user overrides (orientation, crop), `print_count`, `save_count`, `copies` (queued qty), `content_hash` (SHA-256 of photo + XMP bytes — resets `print_count` when it changes; `save_count` persists)
+- **Photo** — `path` (identity), EXIF orientation, user overrides (orientation, crop), `save_count`, `copies` (queued qty), `content_hash` (SHA-256 of photo + XMP bytes — when it changes the stored entry refreshes dims/hash but keeps user overrides + copies)
 - **FolderEntry** — one lazy sidebar node: name, path, direct `photo_count`, `has_subfolders`
 - **FramePreset** — absolute paths to landscape + portrait PNG (alpha), target ratio (crop is always centered)
 - **CanvasPreset** — pixel dimensions, photos-per-canvas, DPI, grid layout (e.g. 2400×1600, 2-up)
@@ -49,7 +49,7 @@ Frames are per-event PNGs provided by the photographer (no bundled frames). Path
 
 ### Export Processing Pipeline
 
-Export/print runs canvases in parallel on a dedicated 4-thread rayon pool (memory ceiling).
+Export runs canvases in parallel on a dedicated 4-thread rayon pool (memory ceiling).
 Frames are prepared **once** per run via `prepare_frames()` (per-orientation placement dims,
 aspect preserved, RGBA8). Per photo, `frame_photo_for_canvas()`:
 
@@ -72,22 +72,21 @@ Dev profile compiles deps at opt-level 3 so `tauri dev` image work stays usable.
 - Virtual list (react-window) in gallery; only visible thumbnails rendered
 - Full framed preview: on-demand Rust, cached per `(photo_path, preset_id)` (preset `None` → keyed under nil UUID, returns the raw full photo), returned as bytes
 
-### Print / Export
+### Export
 
-- **Export**: canvases written to `{output_folder}/{YYYY-MM-DD_HH-MM-SS}/` — no prompt, uses event's fixed output folder
-- **Print**: user sets per-photo print quantity → compositor tiles framed photos onto canvas → OS print dialog → `print_count` incremented
+- **Export**: user sets per-photo copies → compositor tiles framed photos onto canvas → canvases written to `{output_folder}/{YYYY-MM-DD_HH-MM-SS}/`, `save_count` incremented. Save-to-folder is the only target (no direct printing).
 - **Canvas presets**: user-defined per event (e.g. "2-up 2400×1600", "4-up 3600×2400")
 
 ### File System Watcher
 
 `notify` watches each browsed folder (non-recursive) + all frame PNG paths:
 - New photo → auto-add, generate thumbnail
-- Photo/XMP change → recompute `content_hash`; if changed: reset `print_count`, invalidate thumbnail
+- Photo/XMP change → recompute `content_hash`; if changed: refresh stored entry (keep overrides + copies), invalidate thumbnail
 - Frame PNG change → invalidate framed previews using that frame, UI refreshes immediately
 
 ### Auth & Entitlements (Supabase)
 
-- **Free tier**: output watermarked (composited on export/print canvas). No other limits.
+- **Free tier**: output watermarked (composited on the export canvas). No other limits.
 - **Pro / Studio tier**: no watermark; tier comes from a Supabase `entitlements` row.
 - Identity via Supabase Auth (email+password, Google, Facebook). Tier is the
   `entitlements` row for the signed-in user — no license keys.
@@ -116,7 +115,7 @@ orenew/
 │   │   ├── commands/          # Thin Tauri IPC handlers
 │   │   │   ├── project.rs     # open/create/save/delete event, list_folder, select_folder, sync_watches
 │   │   │   ├── gallery.rs     # get_thumbnail, get_frame_thumbnail, get_framed_preview, overrides (preview IPC lives here)
-│   │   │   ├── export.rs      # save_photos, print_photos (Windows print dialog / folder fallback; watermark per tier)
+│   │   │   ├── export.rs      # save_photos (canvases → output folder; watermark per tier)
 │   │   │   ├── faces.rs       # count_faces — rustface (SeetaFace2), embedded model [tests]
 │   │   │   ├── canvas_preset.rs  # list/create/update/delete_canvas_preset
 │   │   │   ├── frame_preset.rs   # list/create/update/delete_frame_preset
@@ -128,7 +127,7 @@ orenew/
 │   │   │   ├── imageops.rs    # crop_and_resize() + overlay_frame() — fast path + simple fallback per fn [tests]
 │   │   │   ├── frame.rs       # apply_frame_overlay() — load frame PNG + overlay_frame() (preview path) [tests]
 │   │   │   ├── encode.rs      # write_print_ready() — RGB JPEG q95, 300 DPI JFIF
-│   │   │   └── compose.rs     # frame_photo_for_canvas() (save/print per-photo path)
+│   │   │   └── compose.rs     # frame_photo_for_canvas() (save per-photo path)
 │   │   ├── canvas/            # compositor.rs — tile + apply_watermark() (procedural, free tier)
 │   │   ├── project/           # model.rs + persistence.rs (serde_json, in-memory cache) [tests]
 │   │   ├── preview/           # thumbnail.rs (256px disk cache) + framed_preview.rs (1200px; preset=None → raw full photo, no crop/frame)
@@ -144,7 +143,7 @@ orenew/
 │   │   ├── Gallery.tsx        # react-window FixedSizeGrid virtual grid (full-width)
 │   │   ├── PhotoCard.tsx      # thumbnail tile + qty stepper (bottom overlay, default 1)
 │   │   ├── Lightbox.tsx       # full-screen framed preview + prev/next + orientation/frame/copies/counts
-│   │   ├── ExportDialog.tsx   # print/save config: frame+canvas preset pick + manage (add/edit/delete), sticky defaults
+│   │   ├── ExportDialog.tsx   # export config: frame+canvas preset pick + manage, output folder, live preview, sticky defaults
 │   │   ├── FramePresetDialog.tsx   # create/edit frame preset
 │   │   ├── CanvasPresetForm.tsx    # create/edit canvas preset (used inside ExportDialog + EventConfigDialog)
 │   │   ├── EventConfigDialog.tsx   # event-level frame + canvas preset management (add/edit/delete)
@@ -163,18 +162,12 @@ orenew/
 ### Export flow (current)
 
 Per-photo quantities are set via the qty stepper at the **bottom of each gallery card** (default 1).
-All quantities live in `App.photoQueue: Record<string, number>` — a unified session-only state for
-both print and save. The toolbar **Export** button opens `ExportDialog` to pick a frame
-preset + canvas preset and a destination (Print or Save to path), then calls `print_photos` or
-`save_photos`. After completion, `print_count` / `save_count` on each Photo is bumped optimistically
-and the queue is cleared.
-
-**Print** composes canvases, writes them to a temp dir, then dispatches by platform:
-on **Windows** it launches the native print dialog per canvas
-(`Start-Process -Verb Print`); on **macOS/Linux** (no reliable CLI print dialog) it
-returns the folder and the UI offers an "Open folder" button to print manually.
-`print_photos` returns `{ count, dialog_opened, output_dir }` so the UI message is
-honest. `print_count` is optimistic — OS-dialog cancellation isn't detectable.
+All quantities live in `App.photoQueue: Record<string, number>` — a session-only state scoped at
+export time to the active folder + any Ctrl-selected sidebar folders (`effectiveQueue`). The
+**Export** button opens `ExportDialog` to pick a frame + canvas preset and the output folder, shows
+a live page preview, then calls `save_photos`. After completion, `save_count` on each Photo is bumped
+optimistically and the queue is cleared. Save-to-folder is the only export target — there is no
+direct printing.
 
 ### Face detection (current)
 
@@ -218,7 +211,7 @@ if the 14-day grace (from the token's `iat`) has lapsed it clears caches and emi
 `license-expired`. If this device lost its seat, it emits `device-limit` and drops
 to Free. `Entitlement::effective_tier()` enforces the grace ceiling at read time.
 
-`AppState::tier()` gates watermarking in `save_photos`/`print_photos`. Free tier
+`AppState::tier()` gates watermarking in `save_photos`. Free tier
 composites a procedural diagonal-stripe watermark (no bundled asset/font).
 
 Supabase project config lives in a single repo-root `.env`
@@ -231,8 +224,8 @@ through `envPrefix: ["VITE_", "SUPABASE_"]`. A real shell env var overrides the
 
 `FsWatcher` emits a Tauri `fs-changed` event with the changed file path. The frontend decides:
 a frame-PNG path → bump a preview nonce to refetch framed previews; otherwise, if the change is in
-a browsed folder, re-scan it via `select_folder` (which recomputes content hashes and resets
-`print_count` for changed photos in `merge_folder`). Thumbnails bust automatically because
+a browsed folder, re-scan it via `select_folder` (which recomputes content hashes and refreshes
+changed photos while keeping user overrides + copies in `merge_folder`). Thumbnails bust automatically because
 `useThumbnail` keys on `content_hash`. `sync_watches` re-establishes watches (browsed folders +
 frame dirs, non-recursive) on event open.
 
