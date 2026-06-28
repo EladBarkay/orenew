@@ -126,13 +126,14 @@ export default function App() {
     const bump = (dir: number) =>
       setCellSize((c) => Math.min(280, Math.max(100, c + dir * 20)));
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
+      if (!(e.ctrlKey || e.metaKey) || anyModalOpen()) return;
       if (["+", "=", "Add"].includes(e.key)) { e.preventDefault(); bump(1); }
       else if (["-", "_", "Subtract"].includes(e.key)) { e.preventDefault(); bump(-1); }
     };
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault(); // suppress webview page zoom
+      if (anyModalOpen()) return; // a dialog has focus — don't zoom the gallery behind it
       bump(e.deltaY < 0 ? 1 : -1);
     };
     window.addEventListener("keydown", onKey);
@@ -350,9 +351,14 @@ export default function App() {
     if (!yes) return;
     try {
       await invoke("delete_canvas_preset", { eventId: event.id, presetId: preset.id });
+      const remaining = event.canvas_presets.filter((p) => p.id !== preset.id);
       updateEvent({
         ...event,
-        canvas_presets: event.canvas_presets.filter((p) => p.id !== preset.id),
+        canvas_presets: remaining,
+        active_canvas_preset_id:
+          event.active_canvas_preset_id === preset.id
+            ? remaining[0]?.id ?? null
+            : event.active_canvas_preset_id,
       });
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
@@ -468,19 +474,21 @@ export default function App() {
   // `selected` tracks the last click for the preview + shift anchor.
   function handlePhotoClick(photo: Photo, e: React.MouseEvent) {
     const id = photo.path;
-    setSelected(photo);
     if (e.shiftKey && anchorRef.current) {
+      setSelected(photo);
       setSelectedIds(new Set(rangeIds(visiblePhotos, anchorRef.current, id)));
     } else if (e.ctrlKey || e.metaKey) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) { next.delete(id); setSelected(null); }
+        else { next.add(id); setSelected(photo); }
         return next;
       });
       anchorRef.current = id;
     } else {
       // Plain click selects just this photo. Double-click opens the full-screen
       // review (see handlePhotoDoubleClick) — single click no longer opens it.
+      setSelected(photo);
       setSelectedIds(new Set([id]));
       anchorRef.current = id;
     }
@@ -494,6 +502,7 @@ export default function App() {
   // Ctrl/Cmd+A selects every photo currently shown in the grid.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (anyModalOpen()) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
         if (!activePath) return;
         // Don't hijack select-all inside text fields.
@@ -517,6 +526,7 @@ export default function App() {
   // with nothing selected, the first arrow selects the first card and goes from there.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (anyModalOpen()) return;
       const isArrow = ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(e.key);
       if (isArrow) {
         const target = e.target as HTMLElement | null;
@@ -553,7 +563,7 @@ export default function App() {
   // +/- bumps the copy count of the single selected card (Ctrl+± stays zoom).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || lightboxOpen) return;
+      if (e.ctrlKey || e.metaKey || lightboxOpen || anyModalOpen()) return;
       if (!selected || selectedIds.size > 1) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
@@ -637,16 +647,14 @@ export default function App() {
 
   // After exporting: optimistically bump counts for processed photos and clear
   // only those from the queue (`queue` is the effective, possibly selection-scoped set).
-  function handleExported(destination: "print" | "save", queue: Record<string, number>) {
+  function handleExported(queue: Record<string, number>) {
     setEvent((prev) => {
       if (!prev) return prev;
       const photos = { ...prev.photos };
       for (const [path, qty] of Object.entries(queue)) {
         const p = photos[path];
         if (!p || !qty) continue;
-        photos[path] = destination === "print"
-          ? { ...p, print_count: p.print_count + qty }
-          : { ...p, save_count: p.save_count + qty };
+        photos[path] = { ...p, save_count: p.save_count + qty };
       }
       return { ...prev, photos };
     });
