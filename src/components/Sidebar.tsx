@@ -7,8 +7,10 @@ import { basename } from "../lib/paths";
 type Props = {
   rootPath: string | null;
   activePath: string | null;
+  /** Folders included in export (active + Ctrl-selected); all get a highlight. */
+  selectedFolders: Set<string>;
   hideEmpty: boolean;
-  onSelectFolder: (path: string) => void;
+  onSelectFolder: (path: string, additive: boolean) => void;
 };
 
 const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
@@ -19,7 +21,7 @@ const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
  * call) only when expanded — the whole tree is never walked up front. Clicking a
  * folder loads its photos into the gallery.
  */
-export default function Sidebar({ rootPath, activePath, hideEmpty, onSelectFolder }: Props) {
+export default function Sidebar({ rootPath, activePath, selectedFolders, hideEmpty, onSelectFolder }: Props) {
   if (!rootPath) return <aside className="w-60 shrink-0 border-e border-neutral-800 bg-neutral-900" />;
 
   const root: FolderEntry = {
@@ -31,19 +33,20 @@ export default function Sidebar({ rootPath, activePath, hideEmpty, onSelectFolde
 
   return (
     <aside className="w-60 shrink-0 overflow-y-auto border-e border-neutral-800 bg-neutral-900 py-1.5">
-      <Node node={root} depth={0} activePath={activePath} hideEmpty={hideEmpty} onSelectFolder={onSelectFolder} defaultOpen />
+      <Node node={root} depth={0} activePath={activePath} selectedFolders={selectedFolders} hideEmpty={hideEmpty} onSelectFolder={onSelectFolder} defaultOpen />
     </aside>
   );
 }
 
 function Node({
-  node, depth, activePath, hideEmpty, onSelectFolder, defaultOpen = false,
+  node, depth, activePath, selectedFolders, hideEmpty, onSelectFolder, defaultOpen = false,
 }: {
   node: FolderEntry;
   depth: number;
   activePath: string | null;
+  selectedFolders: Set<string>;
   hideEmpty: boolean;
-  onSelectFolder: (path: string) => void;
+  onSelectFolder: (path: string, additive: boolean) => void;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -60,6 +63,8 @@ function Node({
   }, [open, children, node.path]);
 
   const active = activePath != null && norm(node.path) === norm(activePath);
+  // Part of the export set but not the active folder (Ctrl-selected extra).
+  const selected = !active && selectedFolders.has(norm(node.path));
   const visibleChildren = (children ?? []).filter(
     (c) => !hideEmpty || c.photo_count > 0 || c.has_subfolders
   );
@@ -69,10 +74,12 @@ function Node({
       <div
         className={[
           "group flex items-center gap-1 pe-2 py-1 cursor-pointer transition-colors",
-          active ? "bg-accent/15 text-accent" : "text-neutral-300 hover:bg-neutral-800",
+          active ? "bg-accent/15 text-accent"
+            : selected ? "bg-accent/10 text-accent/90"
+            : "text-neutral-300 hover:bg-neutral-800",
         ].join(" ")}
         style={{ paddingInlineStart: 8 + depth * 14 }}
-        onClick={() => onSelectFolder(node.path)}
+        onClick={(e) => onSelectFolder(node.path, e.ctrlKey || e.metaKey)}
         onDoubleClick={() => { if (node.has_subfolders) setOpen((v) => !v); }}
         onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
       >
@@ -114,6 +121,7 @@ function Node({
             node={c}
             depth={depth + 1}
             activePath={activePath}
+            selectedFolders={selectedFolders}
             hideEmpty={hideEmpty}
             onSelectFolder={onSelectFolder}
           />

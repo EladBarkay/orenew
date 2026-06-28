@@ -34,6 +34,7 @@ type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
 
 const LAST_EVENT_KEY = "orenew.lastEvent";
+const LAST_FOLDER_KEY = "orenew.lastFolder";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -41,6 +42,9 @@ export default function App() {
   // The folder currently shown in the gallery (its absolute path). Photos are
   // derived from `event.photos` by matching parent dir.
   const [activePath, setActivePath] = useState<string | null>(null);
+  // Extra folders (beyond the active one) the user Ctrl-clicked in the sidebar to
+  // include in export. The active folder is always part of the export set.
+  const [extraFolders, setExtraFolders] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Photo | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [status, setStatus] = useState("");
@@ -95,6 +99,15 @@ export default function App() {
     event && activePath
       ? Object.values(event.photos).filter((p) => folderOf(p.path) === norm(activePath))
       : [];
+
+  // Folders contributing to export: the active folder plus any Ctrl-clicked extras.
+  const exportFolders = new Set<string>(
+    [activePath, ...extraFolders].filter((p): p is string => !!p).map(norm)
+  );
+  // Photos across every export folder (the active gallery folder + extras).
+  const exportFolderPhotos: Photo[] = event
+    ? Object.values(event.photos).filter((p) => exportFolders.has(folderOf(p.path)))
+    : [];
 
   // Block the webview reload shortcuts — a reload wipes the in-memory event and
   // forces the user to re-open it.
@@ -203,9 +216,9 @@ export default function App() {
   }
 
   // Seed qty=1 for photos that appear after a folder was opened (added on disk and
-  // picked up by the watcher). Runs after the active folder's photos change.
+  // picked up by the watcher) or in a newly Ctrl-selected export folder.
   useEffect(() => {
-    const newPhotos = folderPhotos.filter((p) => !seenIdsRef.current.has(p.path));
+    const newPhotos = exportFolderPhotos.filter((p) => !seenIdsRef.current.has(p.path));
     if (newPhotos.length === 0) return;
     setPhotoQueue((prev) => {
       const next = { ...prev };
@@ -213,7 +226,7 @@ export default function App() {
       return next;
     });
     for (const p of newPhotos) seenIdsRef.current.add(p.path);
-  }, [folderPhotos]);
+  }, [exportFolderPhotos]);
 
   // Persist queued copies (debounced) so they survive close/reopen. Skips the run
   // right after a load (seedQueueFromEvent) so we don't echo disk values back.
@@ -244,10 +257,12 @@ export default function App() {
       clearSelection();
       setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
-      // Open the root folder so the gallery isn't empty; subfolders are browsed
-      // from the sidebar tree.
+      // Resume the last viewed folder if it's inside this event; otherwise open the
+      // root so the gallery isn't empty. Subfolders are browsed from the sidebar tree.
       const root = evt.root_path ?? path;
-      await selectFolder(root, evt);
+      const stored = localStorage.getItem(LAST_FOLDER_KEY);
+      const start = stored && norm(stored).startsWith(norm(root)) ? stored : root;
+      await selectFolder(start, { forEvent: evt });
       localStorage.setItem(LAST_EVENT_KEY, root);
       setStatus("");
     } catch (e) {
@@ -264,20 +279,46 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Open a folder from the sidebar tree: scan + merge its photos in Rust, then make
-  // it the active folder. `forEvent` lets openEvent pass the just-loaded event
-  // before state has settled.
-  async function selectFolder(path: string, forEvent?: OrenewEvent) {
+  // Open a folder from the sidebar tree: scan + merge its photos in Rust. When
+  // `activate` (the default), make it the gallery folder and reset the extra-folder
+  // export set; `forEvent` lets openEvent pass the just-loaded event before state
+  // has settled. With `activate: false` it only merges photos (used by Ctrl-select).
+  async function selectFolder(path: string, opts: { forEvent?: OrenewEvent; activate?: boolean } = {}) {
+    const { forEvent, activate = true } = opts;
     const evt = forEvent ?? event;
     if (!evt) return;
     try {
       const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path });
       setEvent(updated);
-      setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
-      clearSelection();
+      if (activate) {
+        setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
+        setExtraFolders(new Set());
+        localStorage.setItem(LAST_FOLDER_KEY, path);
+        clearSelection();
+      }
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
     }
+  }
+
+  // Sidebar folder click. Plain click activates a single folder; Ctrl/Cmd-click
+  // toggles a folder in the export set without leaving the active folder (the
+  // active folder can't be removed — it's always exported).
+  async function handleFolderClick(path: string, additive: boolean) {
+    if (!additive || !activePath) {
+      await selectFolder(path);
+      return;
+    }
+    // Ctrl-click the active folder: it's always exported, nothing to toggle.
+    if (norm(path) === norm(activePath)) return;
+    setExtraFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+    // Merge its photos so they're available for export (seeding handles qty=1).
+    await selectFolder(path, { activate: false });
   }
 
   async function deleteEvent() {
@@ -363,13 +404,13 @@ export default function App() {
 
   // Bulk actions act on the selection, or the whole folder when nothing is selected.
   const targetIds = selectedIds.size > 0 ? [...selectedIds] : photos.map((p) => p.path);
-  // Process/totals only count the targeted photos: the selection if any, else the
-  // current folder. The queue is global across browsed folders, so scope it here —
-  // export/preview must never pull in photos from other (sub)folders.
-  const folderPaths = new Set(folderPhotos.map((p) => p.path));
+  // Process/totals only count the targeted photos: the photo selection if any, else
+  // every export folder (active + Ctrl-selected). The queue is global across browsed
+  // folders, so scope it here — export/preview never pull in unselected folders.
+  const exportPaths = new Set(exportFolderPhotos.map((p) => p.path));
   const effectiveQueue = Object.fromEntries(
     Object.entries(photoQueue).filter(([path]) =>
-      selectedIds.size > 0 ? selectedIds.has(path) : folderPaths.has(path)
+      selectedIds.size > 0 ? selectedIds.has(path) : exportPaths.has(path)
     )
   );
   const queuedTotal = Object.values(effectiveQueue).reduce((s, q) => s + q, 0);
@@ -646,8 +687,9 @@ export default function App() {
             <Sidebar
               rootPath={event.root_path}
               activePath={activePath}
+              selectedFolders={exportFolders}
               hideEmpty={hideEmpty}
-              onSelectFolder={(p) => selectFolder(p)}
+              onSelectFolder={handleFolderClick}
             />
             <div className="flex flex-col flex-1 overflow-hidden">
               <ViewControls
