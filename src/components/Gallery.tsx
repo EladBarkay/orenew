@@ -14,7 +14,7 @@ type Props = {
   /** Every photo in the multi-selection — all get a ring. */
   selectedIds: Set<string>;
   onPhotoClick: (photo: Photo, e: React.MouseEvent) => void;
-  onPhotoDoubleClick: (photo: Photo) => void;
+  onPhotoDoubleClick: (photo: Photo, e: React.MouseEvent) => void;
   /** Clicking empty space (not a card) clears the selection. */
   onBackgroundClick: () => void;
   photoQueue: Record<string, number>;
@@ -35,7 +35,7 @@ type CellData = {
   selectedIds: Set<string>;
   photoQueue: Record<string, number>;
   onPhotoClick: (photo: Photo, e: React.MouseEvent) => void;
-  onPhotoDoubleClick: (photo: Photo) => void;
+  onPhotoDoubleClick: (photo: Photo, e: React.MouseEvent) => void;
   onQtyDelta: (photoId: string, delta: number) => void;
 };
 
@@ -71,7 +71,7 @@ function Cell({
         selected={selectedIds.has(photo.path)}
         active={photo.path === selectedId}
         onClick={(e) => onPhotoClick(photo, e)}
-        onDoubleClick={() => onPhotoDoubleClick(photo)}
+        onDoubleClick={(e) => onPhotoDoubleClick(photo, e)}
         cellSize={cellSize}
         qty={photoQueue[photo.path] ?? 0}
         onQtyDelta={(delta) => onQtyDelta(photo.path, delta)}

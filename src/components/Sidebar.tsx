@@ -10,6 +10,8 @@ type Props = {
   /** Folders included in export (active + Ctrl-selected); all get a highlight. */
   selectedFolders: Set<string>;
   hideEmpty: boolean;
+  /** Bumped on fs changes to re-read open folders (new/removed subfolders). */
+  refreshNonce: number;
   onSelectFolder: (path: string, additive: boolean) => void;
 };
 
@@ -21,7 +23,7 @@ const norm = (s: string) => s.replace(/\\/g, "/").replace(/\/$/, "");
  * call) only when expanded — the whole tree is never walked up front. Clicking a
  * folder loads its photos into the gallery.
  */
-export default function Sidebar({ rootPath, activePath, selectedFolders, hideEmpty, onSelectFolder }: Props) {
+export default function Sidebar({ rootPath, activePath, selectedFolders, hideEmpty, refreshNonce, onSelectFolder }: Props) {
   if (!rootPath) return <aside className="w-60 shrink-0 border-e border-neutral-800 bg-neutral-900" />;
 
   const root: FolderEntry = {
@@ -33,19 +35,20 @@ export default function Sidebar({ rootPath, activePath, selectedFolders, hideEmp
 
   return (
     <aside className="w-60 shrink-0 overflow-y-auto border-e border-neutral-800 bg-neutral-900 py-1.5">
-      <Node node={root} depth={0} activePath={activePath} selectedFolders={selectedFolders} hideEmpty={hideEmpty} onSelectFolder={onSelectFolder} defaultOpen />
+      <Node node={root} depth={0} activePath={activePath} selectedFolders={selectedFolders} hideEmpty={hideEmpty} refreshNonce={refreshNonce} onSelectFolder={onSelectFolder} defaultOpen />
     </aside>
   );
 }
 
 function Node({
-  node, depth, activePath, selectedFolders, hideEmpty, onSelectFolder, defaultOpen = false,
+  node, depth, activePath, selectedFolders, hideEmpty, refreshNonce, onSelectFolder, defaultOpen = false,
 }: {
   node: FolderEntry;
   depth: number;
   activePath: string | null;
   selectedFolders: Set<string>;
   hideEmpty: boolean;
+  refreshNonce: number;
   onSelectFolder: (path: string, additive: boolean) => void;
   defaultOpen?: boolean;
 }) {
@@ -61,6 +64,15 @@ function Node({
       .then(setChildren)
       .catch(() => setChildren([]));
   }, [open, children, node.path]);
+
+  // Re-read an open node's subfolders when the watcher reports a change, so new or
+  // removed folders (e.g. a fresh SD-dump under the root) appear without reopening.
+  useEffect(() => {
+    if (!open || refreshNonce === 0) return;
+    invoke<FolderEntry[]>("list_folder", { folder: node.path })
+      .then(setChildren)
+      .catch(() => {});
+  }, [refreshNonce]);
 
   const active = activePath != null && norm(node.path) === norm(activePath);
   // Part of the export set but not the active folder (Ctrl-selected extra).
@@ -123,6 +135,7 @@ function Node({
             activePath={activePath}
             selectedFolders={selectedFolders}
             hideEmpty={hideEmpty}
+            refreshNonce={refreshNonce}
             onSelectFolder={onSelectFolder}
           />
         ))}

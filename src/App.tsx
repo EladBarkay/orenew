@@ -54,6 +54,9 @@ export default function App() {
   const [devicePicker, setDevicePicker] = useState<{ mode: "limit" | "manage"; devices: Device[] } | null>(null);
   const [deviceHash, setDeviceHash] = useState("");
   const [frameNonce, setFrameNonce] = useState(0);
+  // Bumped (debounced) on any fs change so the sidebar tree re-reads its folders.
+  const [treeNonce, setTreeNonce] = useState(0);
+  const treeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingFrame, setEditingFrame] = useState<FramePreset | null>(null);
   const [editingCanvas, setEditingCanvas] = useState<CanvasPreset | null>(null);
   // Add-preset modals stack over the Export dialog (which manages presets), so they
@@ -194,6 +197,13 @@ export default function App() {
   // Best-effort signed update check on startup.
   useUpdater();
 
+  // ponytail: debounce coalesces a burst of file copies into one tree refresh
+  // instead of one list_folder per open node per file.
+  function bumpTreeNonce() {
+    if (treeTimerRef.current) clearTimeout(treeTimerRef.current);
+    treeTimerRef.current = setTimeout(() => setTreeNonce((n) => n + 1), 300);
+  }
+
   useFsWatcher(event, activePath, {
     onEvent: (updated) => {
       setEvent(updated);
@@ -202,6 +212,7 @@ export default function App() {
       setSelected((prev) => (prev ? (updated.photos[prev.path] ?? prev) : prev));
     },
     onFrameChanged: () => setFrameNonce((n) => n + 1),
+    onTreeMaybeChanged: bumpTreeNonce,
   });
 
   // Seed the global copy-queue from each photo's persisted `copies` (keyed by
@@ -289,7 +300,7 @@ export default function App() {
     const evt = forEvent ?? event;
     if (!evt) return;
     try {
-      const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path });
+      const updated = await invoke<OrenewEvent>("select_folder", { eventId: evt.id, folder: path, track: activate });
       setEvent(updated);
       if (activate) {
         setActivePath(path); // seenIdsRef effect seeds any new photos to qty 1
@@ -494,7 +505,9 @@ export default function App() {
     }
   }
 
-  function handlePhotoDoubleClick(photo: Photo) {
+  function handlePhotoDoubleClick(photo: Photo, e: React.MouseEvent) {
+    // During Ctrl/Cmd multi-selection a double-click must not open the lightbox.
+    if (e.ctrlKey || e.metaKey) return;
     setSelected(photo);
     setLightboxOpen(true);
   }
@@ -697,6 +710,7 @@ export default function App() {
               activePath={activePath}
               selectedFolders={exportFolders}
               hideEmpty={hideEmpty}
+              refreshNonce={treeNonce}
               onSelectFolder={handleFolderClick}
             />
             <div className="flex flex-col flex-1 overflow-hidden">
