@@ -66,14 +66,9 @@ const en = {
     sortSize: "File size",
     sortAsc: "Ascending",
     sortDesc: "Descending",
-    modeGallery: "Gallery",
-    modeCanvas: "Canvas",
   },
 
   canvasView: {
-    needPresets: "Add a frame preset and a canvas preset to preview export canvases.",
-    addFramePreset: "Add frame preset",
-    addCanvasPreset: "Add canvas preset",
     queueToPreview: "Queue copies in the gallery to preview the export canvases.",
     pageCount_one: "{{count}} canvas",
     pageCount_other: "{{count}} canvases",
@@ -87,7 +82,7 @@ const en = {
 
   sidebar: {
     add: "+ Add",
-    revealFolder: "Double-click to reveal in file manager",
+    openInExplorer: "Open in file explorer",
     frames: "Frames",
     noFrames: "No frames —",
     addOne: "add one",
@@ -122,6 +117,8 @@ const en = {
 
   export: {
     title: "Export photos",
+    preview: "Preview",
+    previewPickPresets: "Pick a frame and canvas preset to preview the export.",
     sendTo: "Send to",
     print: "Print",
     saveToPath: "Save to path",

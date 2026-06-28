@@ -10,11 +10,10 @@ import SettingsDialog from "./components/SettingsDialog";
 import DeviceManagerDialog from "./components/DeviceManagerDialog";
 import CanvasPresetForm from "./components/CanvasPresetForm";
 import EventConfigDialog from "./components/EventConfigDialog";
-import { Modal } from "./components/ui";
+import { Modal, anyModalOpen } from "./components/ui";
 import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
 import ViewControls from "./components/ViewControls";
-import CanvasPreview from "./components/CanvasPreview";
 import ActionBar from "./components/ActionBar";
 import EmptyState from "./components/EmptyState";
 import { useFsWatcher } from "./hooks/useFsWatcher";
@@ -33,7 +32,8 @@ const folderOf = (photoPath: string) => parentDir(photoPath);
 
 type ModalKind = "export" | "settings" | "eventConfig" | null;
 export type SortKey = "name" | "created" | "modified" | "size";
-export type ViewMode = "gallery" | "canvas";
+
+const LAST_EVENT_KEY = "orenew.lastEvent";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -56,10 +56,13 @@ export default function App() {
   // get their own state instead of sharing the single `modal` slot.
   const [addingFrame, setAddingFrame] = useState(false);
   const [addingCanvas, setAddingCanvas] = useState(false);
+  // Id of the preset just created via an add-dialog, so the Export / Event-config
+  // dialog that triggered the add auto-selects it. Cleared when those dialogs open.
+  const [newFrameId, setNewFrameId] = useState<string | null>(null);
+  const [newCanvasId, setNewCanvasId] = useState<string | null>(null);
   // Unified per-photo queue: photoId → quantity (session-only).
   const [photoQueue, setPhotoQueue] = useState<Record<string, number>>({});
   const [cellSize, setCellSize] = useState(168);
-  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [hideEmpty, setHideEmpty] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -225,25 +228,41 @@ export default function App() {
   }, [photoQueue, event?.id]);
 
   async function openEvent() {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const folder = await open({ directory: true, multiple: false });
+    if (!folder) return;
+    await loadEvent(folder as string);
+  }
+
+  // Open (or resume) the event rooted at `path` and show its root folder. Shared by
+  // the folder picker and the relaunch auto-open. Persists the path as last-opened.
+  async function loadEvent(path: string) {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false });
-      if (!folder) return;
       setStatus(t("app.loading"));
-      const evt = await invoke<OrenewEvent>("open_event", { path: folder });
+      const evt = await invoke<OrenewEvent>("open_event", { path });
       setEvent(evt);
       clearSelection();
       setPhotoQueue(seedQueueFromEvent(evt));
       invoke("sync_watches", { eventId: evt.id }).catch(() => {});
       // Open the root folder so the gallery isn't empty; subfolders are browsed
       // from the sidebar tree.
-      const root = evt.root_path ?? (folder as string);
+      const root = evt.root_path ?? path;
       await selectFolder(root, evt);
+      localStorage.setItem(LAST_EVENT_KEY, root);
       setStatus("");
     } catch (e) {
       setStatus(t("app.error", { message: String(e) }));
+      throw e;
     }
   }
+
+  // Relaunch: reopen the last viewed event. If its folder is gone, drop the key
+  // and fall back to the empty state.
+  useEffect(() => {
+    const last = localStorage.getItem(LAST_EVENT_KEY);
+    if (last) loadEvent(last).catch(() => localStorage.removeItem(LAST_EVENT_KEY));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Open a folder from the sidebar tree: scan + merge its photos in Rust, then make
   // it the active folder. `forEvent` lets openEvent pass the just-loaded event
@@ -271,6 +290,7 @@ export default function App() {
     if (!yes) return;
     try {
       await invoke("delete_event", { eventId: event.id });
+      localStorage.removeItem(LAST_EVENT_KEY);
       setEvent(null);
       setActivePath(null);
       setSelected(null);
@@ -489,12 +509,28 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [selected, visiblePhotos, lightboxOpen]);
 
+  // +/- bumps the copy count of the single selected card (Ctrl+± stays zoom).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || lightboxOpen) return;
+      if (!selected || selectedIds.size > 1) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (["+", "="].includes(e.key)) { e.preventDefault(); adjustQty(selected.path, 1); }
+      else if (["-", "_"].includes(e.key)) { e.preventDefault(); adjustQty(selected.path, -1); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selected, selectedIds, lightboxOpen]);
+
   // Escape: close the lightbox, else clear the selection. Kept separate from the
   // arrow/Enter nav effect above (which is gated on `selected`) so Esc still works
   // after Ctrl+A — that sets selectedIds without setting `selected`.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // A dialog open? Let the Modal stack handle Esc (closes topmost first).
+      if (anyModalOpen()) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       if (lightboxOpen) setLightboxOpen(false);
@@ -599,7 +635,7 @@ export default function App() {
         status={status}
         totalPhotos={totalPhotos}
         onOpenEvent={openEvent}
-        onConfigureEvent={() => setModal("eventConfig")}
+        onConfigureEvent={() => { setNewFrameId(null); setNewCanvasId(null); setModal("eventConfig"); }}
         onDeleteEvent={deleteEvent}
         onSettings={() => setModal("settings")}
       />
@@ -615,8 +651,6 @@ export default function App() {
             />
             <div className="flex flex-col flex-1 overflow-hidden">
               <ViewControls
-                viewMode={viewMode}
-                onSetViewMode={setViewMode}
                 hideEmpty={hideEmpty}
                 onToggleHideEmpty={() => setHideEmpty((v) => !v)}
                 cellSize={cellSize}
@@ -627,14 +661,6 @@ export default function App() {
                 onToggleSortDir={() => setSortDir((d) => (d === 1 ? -1 : 1))}
               />
               <div className="flex flex-1 overflow-hidden">
-                {viewMode === "canvas" ? (
-                  <CanvasPreview
-                    event={event}
-                    photoQueue={effectiveQueue}
-                    onAddFrame={() => setAddingFrame(true)}
-                    onAddCanvas={() => setAddingCanvas(true)}
-                  />
-                ) : (
                   <Gallery
                     photos={visiblePhotos}
                     selectedId={selected?.path ?? null}
@@ -647,7 +673,6 @@ export default function App() {
                     cellSize={cellSize}
                     onColCountChange={(n) => { colCountRef.current = n; }}
                   />
-                )}
               </div>
             </div>
           </div>
@@ -665,7 +690,7 @@ export default function App() {
               onSetAllQty={handleSetAllQty}
               onScanFaces={scanFaces}
               onClearSelection={clearSelection}
-              onExport={() => setModal("export")}
+              onExport={() => { setNewFrameId(null); setNewCanvasId(null); setModal("export"); }}
             />
           )}
 
@@ -697,6 +722,8 @@ export default function App() {
         <ExportDialog
           event={event}
           photoQueue={effectiveQueue}
+          newFrameId={newFrameId}
+          newCanvasId={newCanvasId}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onExported={handleExported}
@@ -714,6 +741,7 @@ export default function App() {
           onCreated={(updatedEvent) => {
             updateEvent(updatedEvent);
             invoke("sync_watches", { eventId: updatedEvent.id }).catch(() => {});
+            setNewFrameId(updatedEvent.active_frame_preset_id);
             setAddingFrame(false);
           }}
           onClose={() => setAddingFrame(false)}
@@ -722,6 +750,8 @@ export default function App() {
       {modal === "eventConfig" && event && (
         <EventConfigDialog
           event={event}
+          newFrameId={newFrameId}
+          newCanvasId={newCanvasId}
           onClose={() => setModal(null)}
           onEventUpdate={updateEvent}
           onAddFrame={() => setAddingFrame(true)}
@@ -760,7 +790,7 @@ export default function App() {
         <Modal onClose={() => setAddingCanvas(false)}>
           <CanvasPresetForm
             event={event}
-            onCreated={(_preset, updatedEvent) => { updateEvent(updatedEvent); setAddingCanvas(false); }}
+            onCreated={(preset, updatedEvent) => { updateEvent(updatedEvent); setNewCanvasId(preset.id); setAddingCanvas(false); }}
             onCancel={() => setAddingCanvas(false)}
           />
         </Modal>

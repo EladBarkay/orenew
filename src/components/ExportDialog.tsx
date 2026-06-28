@@ -6,6 +6,7 @@ import { CanvasPreset, FramePreset, OrenewEvent } from "../types";
 import { SaveProgress, useSaveProgress } from "../hooks/useSaveProgress";
 import { Modal, Field, Chip, PresetOption } from "./ui";
 import { EditIcon, TrashIcon } from "./icons";
+import ExportPreview from "./ExportPreview";
 
 type Destination = "print" | "save";
 
@@ -14,6 +15,9 @@ type PrintResult = { count: number; dialog_opened: boolean; output_dir: string }
 type Props = {
   event: OrenewEvent;
   photoQueue: Record<string, number>;
+  /** Id of a just-added frame/canvas preset to auto-select (else keep current). */
+  newFrameId: string | null;
+  newCanvasId: string | null;
   onClose: () => void;
   onEventUpdate: (e: OrenewEvent) => void;
   onExported: (destination: Destination, quantities: Record<string, number>) => void;
@@ -26,7 +30,7 @@ type Props = {
 };
 
 export default function ExportDialog({
-  event, photoQueue, onClose, onEventUpdate, onExported,
+  event, photoQueue, newFrameId, newCanvasId, onClose, onEventUpdate, onExported,
   onAddFrame, onEditFrame, onDeleteFrame, onAddCanvas, onEditCanvas, onDeleteCanvas,
 }: Props) {
   const { t } = useTranslation();
@@ -37,6 +41,14 @@ export default function ExportDialog({
   const [canvasId, setCanvasId] = useState<string>(
     event.active_canvas_preset_id ?? event.canvas_presets[0]?.id ?? ""
   );
+
+  // Auto-select a preset the user just created via an add-dialog.
+  useEffect(() => {
+    if (newFrameId && event.frame_presets.some((p) => p.id === newFrameId)) setFrameId(newFrameId);
+  }, [newFrameId]);
+  useEffect(() => {
+    if (newCanvasId && event.canvas_presets.some((p) => p.id === newCanvasId)) setCanvasId(newCanvasId);
+  }, [newCanvasId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [printResult, setPrintResult] = useState<PrintResult | null>(null);
@@ -214,10 +226,12 @@ export default function ExportDialog({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} size="xl">
       <div className="space-y-4">
         <h2 className="text-base font-semibold text-neutral-100">{t("export.title")}</h2>
 
+        <div className="flex gap-5 max-h-[65vh]">
+        <div className="flex-1 min-w-0 space-y-4 overflow-y-auto pe-1">
         {/* Destination toggle */}
         <Field label={t("export.sendTo")}>
           <div className="flex gap-1.5">
@@ -328,6 +342,13 @@ export default function ExportDialog({
                 ? t("export.printAction", { count: totalQty })
                 : t("export.saveAction", { count: canvasCount })}
           </button>
+        </div>
+        </div>
+
+        {/* Live print preview */}
+        <div className="w-80 shrink-0 flex flex-col min-h-0">
+          <ExportPreview event={event} frameId={frameId} canvasId={canvasId} quantities={quantities} />
+        </div>
         </div>
       </div>
     </Modal>

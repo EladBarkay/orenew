@@ -67,14 +67,9 @@ const he = {
     sortSize: "גודל קובץ",
     sortAsc: "סדר עולה",
     sortDesc: "סדר יורד",
-    modeGallery: "גלריה",
-    modeCanvas: "קנבס",
   },
 
   canvasView: {
-    needPresets: "הוסיפו קבוצת מסגרות ותבנית קנבס כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
-    addFramePreset: "הוספת קבוצת מסגרות",
-    addCanvasPreset: "הוספת תבנית קנבס",
     queueToPreview: "הגדירו עותקים בגלריה כדי לראות תצוגה מקדימה של הקנבסים ליצוא.",
     pageCount_one: "קנבס אחד",
     pageCount_two: "שני קנבסים",
@@ -90,7 +85,7 @@ const he = {
 
   sidebar: {
     add: "+ הוספה",
-    revealFolder: "לחיצה כפולה לפתיחה במנהל הקבצים",
+    openInExplorer: "פתיחה במנהל הקבצים",
     frames: "מסגרות",
     noFrames: "אין מסגרות —",
     addOne: "הוסף אחת",
@@ -125,6 +120,8 @@ const he = {
 
   export: {
     title: "ייצוא תמונות",
+    preview: "תצוגה מקדימה",
+    previewPickPresets: "בחרו מסגרת ותבנית קנבס כדי לראות תצוגה מקדימה של הייצוא.",
     sendTo: "שלח אל",
     print: "הדפסה",
     saveToPath: "שמירה לנתיב",

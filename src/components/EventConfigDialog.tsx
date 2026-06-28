@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { CanvasPreset, FramePreset, OrenewEvent } from "../types";
@@ -7,6 +7,9 @@ import { EditIcon, TrashIcon } from "./icons";
 
 type Props = {
   event: OrenewEvent;
+  /** Id of a just-added frame/canvas preset to auto-select (else keep current). */
+  newFrameId: string | null;
+  newCanvasId: string | null;
   onClose: () => void;
   onEventUpdate: (e: OrenewEvent) => void;
   onAddFrame: () => void;
@@ -23,7 +26,7 @@ type Props = {
  * before the user ever opens the export flow.
  */
 export default function EventConfigDialog({
-  event, onClose, onEventUpdate,
+  event, newFrameId, newCanvasId, onClose, onEventUpdate,
   onAddFrame, onEditFrame, onDeleteFrame, onAddCanvas, onEditCanvas, onDeleteCanvas,
 }: Props) {
   const { t } = useTranslation();
@@ -31,6 +34,14 @@ export default function EventConfigDialog({
   const [canvasId, setCanvasId] = useState<string | null>(
     event.active_canvas_preset_id ?? event.canvas_presets[0]?.id ?? null
   );
+
+  // Auto-select a preset the user just created via an add-dialog.
+  useEffect(() => {
+    if (newFrameId && event.frame_presets.some((p) => p.id === newFrameId)) setFrameId(newFrameId);
+  }, [newFrameId]);
+  useEffect(() => {
+    if (newCanvasId && event.canvas_presets.some((p) => p.id === newCanvasId)) setCanvasId(newCanvasId);
+  }, [newCanvasId]);
 
   function done() {
     if (event.active_frame_preset_id !== frameId || event.active_canvas_preset_id !== canvasId) {
