@@ -50,7 +50,7 @@ machine-uid = "0.6"
 whoami = "2"
 
 # File watching
-notify = { version = "7", features = ["serde"] }
+notify = { version = "8", features = ["serde"] }
 
 # Hashing (used by photo/loader.rs content hashing)
 sha2 = "0.10"
