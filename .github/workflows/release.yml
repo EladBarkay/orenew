@@ -106,7 +106,7 @@ jobs:
           Write-Host "Signing configured with thumbprint $($cert.Thumbprint)"
 
       - name: Build & release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Release build creds — build.rs panics if any stay at placeholder.
